@@ -59,8 +59,19 @@ No computer required after deploy. HTTPS works properly for install.
 | **Affirmations** | Sleep TTS loop + night mode |
 | **Daily write** | One gentle prompt per day |
 | **Stars** | Birthday → daily reading + optional notifications |
+| **Human Design** | Calculate or paste your chart (under Stars) |
+| **Muse** | Soft AI companion — use *your* ChatGPT / OpenRouter / Grok key |
 
 Data stays in **this browser’s storage** (localStorage). Clearing site data wipes boards.
+
+### Muse (AI) setup
+
+1. Open the **Muse** tab → **Settings**
+2. Pick a provider (ChatGPT / OpenRouter / Grok / custom)
+3. Paste your API key (stored **only on this device**)
+4. Chat or tap a quick chip (affirmations, board read, HD tips, …)
+
+**Note:** OpenAI blocks browser calls for security. Muse works best when the app is on **Vercel** (included `/api/muse` proxy). On GitHub Pages alone, set a **Proxy URL** or deploy the same repo to Vercel.
 
 ## Stack
 

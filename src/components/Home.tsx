@@ -98,6 +98,9 @@ export function Home() {
         <button type="button" className="quick" onClick={() => setTab("affirm")}>
           <span>🌙</span> Sleep affirm
         </button>
+        <button type="button" className="quick" onClick={() => setTab("muse")}>
+          <span>♡</span> Ask Muse
+        </button>
         <button type="button" className="quick" onClick={() => setTab("stars")}>
           <span>✧</span> Daily stars
         </button>

@@ -47,6 +47,10 @@
   padding-right: max(0.35rem, env(safe-area-inset-right));
 }
 
+.bottom-nav.nav-7 {
+  grid-template-columns: repeat(7, 1fr);
+}
+
 .bottom-nav button {
   display: flex;
   flex-direction: column;
@@ -55,9 +59,9 @@
   background: transparent;
   border: none;
   color: var(--muted);
-  padding: 0.45rem 0.15rem;
+  padding: 0.45rem 0.1rem;
   border-radius: 12px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 500;
   letter-spacing: 0.02em;
   min-height: 44px; /* Apple HIG touch target */
@@ -1036,6 +1040,99 @@ h1 {
 
 .tiny {
   font-size: 0.75rem;
+}
+
+/* ── Muse ────────────────────────────────────────── */
+.muse-settings a {
+  color: var(--accent);
+}
+
+.muse-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.muse-chip {
+  cursor: pointer;
+  background: rgba(255, 179, 199, 0.12);
+  border: 1px solid rgba(255, 179, 199, 0.3);
+  color: var(--accent-2);
+}
+
+.muse-chat {
+  cursor: default;
+  max-height: min(48vh, 420px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
+}
+
+.muse-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.muse-bubble {
+  border-radius: 14px;
+  padding: 0.65rem 0.8rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+
+.muse-bubble.user {
+  background: rgba(196, 160, 255, 0.12);
+  border-color: rgba(196, 160, 255, 0.25);
+  margin-left: 1.25rem;
+}
+
+.muse-bubble.assistant {
+  margin-right: 0.5rem;
+}
+
+.muse-role {
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.muse-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  font-size: 0.92rem;
+}
+
+.muse-composer {
+  display: flex;
+  gap: 0.45rem;
+  align-items: flex-end;
+}
+
+.muse-composer textarea {
+  flex: 1;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.65rem 0.8rem;
+  resize: none;
+  min-height: 3rem;
+  font-size: 16px;
+}
+
+.tiny-btn {
+  margin-top: 0.45rem;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
 }
 
 /* Desktop widen */

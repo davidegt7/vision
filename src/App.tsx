@@ -6,6 +6,7 @@ import { Manifest } from "./components/Manifest";
 import { Affirmations } from "./components/Affirmations";
 import { Journal } from "./components/Journal";
 import { Stars } from "./components/Stars";
+import { Muse } from "./components/Muse";
 import "./App.css";
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
@@ -15,6 +16,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "affirm", label: "Affirm", icon: "🌙" },
   { id: "journal", label: "Write", icon: "✎" },
   { id: "stars", label: "Stars", icon: "♈" },
+  { id: "muse", label: "Muse", icon: "♡" },
 ];
 
 export default function App() {
@@ -32,9 +34,10 @@ export default function App() {
           {tab === "affirm" && <Affirmations />}
           {tab === "journal" && <Journal />}
           {tab === "stars" && <Stars />}
+          {tab === "muse" && <Muse />}
         </main>
 
-        <nav className="bottom-nav" aria-label="Main">
+        <nav className="bottom-nav nav-7" aria-label="Main">
           {TABS.map((t) => (
             <button
               key={t.id}

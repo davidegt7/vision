@@ -6,6 +6,8 @@ import type {
   BoardThemeId,
   Goal,
   JournalEntry,
+  MuseMessage,
+  MuseSettings,
   TabId,
   UserProfile,
   VisionBoard,
@@ -13,6 +15,7 @@ import type {
 } from "./types";
 import { STARTER_AFFIRMATIONS } from "./lib/affirmations";
 import { signFromBirthDate } from "./lib/astrology";
+import { DEFAULT_MUSE } from "./lib/muse";
 import { promptForDate, todayKey } from "./lib/prompts";
 
 /** Works on phone LAN HTTP (non-secure context) where crypto.randomUUID is missing. */
@@ -43,9 +46,14 @@ interface VisionState {
   journal: JournalEntry[];
   profile: UserProfile;
   sleepMode: boolean;
+  museSettings: MuseSettings;
+  museMessages: MuseMessage[];
 
   setTab: (t: TabId) => void;
   setSleepMode: (v: boolean) => void;
+  setMuseSettings: (patch: Partial<MuseSettings> | MuseSettings) => void;
+  pushMuseMessage: (m: MuseMessage) => void;
+  clearMuseMessages: () => void;
 
   // Board
   activeBoard: () => VisionBoard;
@@ -110,9 +118,20 @@ export const useVision = create<VisionState>()(
         notifHour: 9,
       },
       sleepMode: false,
+      museSettings: { ...DEFAULT_MUSE },
+      museMessages: [],
 
       setTab: (tab) => set({ tab }),
       setSleepMode: (sleepMode) => set({ sleepMode }),
+      setMuseSettings: (patch) =>
+        set((s) => ({
+          museSettings: { ...s.museSettings, ...patch },
+        })),
+      pushMuseMessage: (m) =>
+        set((s) => ({
+          museMessages: [...s.museMessages, m].slice(-80),
+        })),
+      clearMuseMessages: () => set({ museMessages: [] }),
 
       activeBoard: () => {
         const s = get();
@@ -403,6 +422,8 @@ export const useVision = create<VisionState>()(
         affirmations: s.affirmations,
         journal: s.journal,
         profile: s.profile,
+        museSettings: s.museSettings,
+        museMessages: s.museMessages.slice(-40),
       }),
       // If localStorage is full / corrupt (common after big image boards on iOS),
       // don't crash the whole app into a black screen.
@@ -435,6 +456,15 @@ export const useVision = create<VisionState>()(
               : current.affirmations,
             journal: Array.isArray(p.journal) ? p.journal : current.journal,
             profile: { ...current.profile, ...(p.profile || {}) },
+            museSettings: {
+              ...current.museSettings,
+              ...((p as { museSettings?: MuseSettings }).museSettings || {}),
+            },
+            museMessages: Array.isArray(
+              (p as { museMessages?: MuseMessage[] }).museMessages,
+            )
+              ? (p as { museMessages: MuseMessage[] }).museMessages
+              : current.museMessages,
           };
         } catch {
           return current;

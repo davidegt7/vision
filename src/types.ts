@@ -1,4 +1,39 @@
-export type TabId = "home" | "board" | "manifest" | "affirm" | "journal" | "stars";
+export type TabId =
+  | "home"
+  | "board"
+  | "manifest"
+  | "affirm"
+  | "journal"
+  | "stars"
+  | "muse";
+
+/** AI companion provider (OpenAI-compatible). */
+export type MuseProviderId = "openai" | "openrouter" | "grok" | "custom";
+
+export interface MuseSettings {
+  /** Prefer user's own key — stored only on this device */
+  apiKey: string;
+  provider: MuseProviderId;
+  /** e.g. gpt-4o-mini, grok-3-mini, openai/gpt-4o-mini */
+  model: string;
+  /**
+   * Custom OpenAI-compatible base, e.g. https://api.openai.com/v1
+   * Leave empty to use the provider default (via /api/muse proxy when available).
+   */
+  baseUrl: string;
+  /**
+   * Optional full URL to a chat proxy (for GitHub Pages).
+   * If empty, app tries same-origin /api/muse (Vercel).
+   */
+  proxyUrl: string;
+}
+
+export interface MuseMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  at: string;
+}
 
 export type BoardThemeId =
   | "midnight"
