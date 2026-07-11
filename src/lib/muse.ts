@@ -4,13 +4,45 @@ import type { HumanDesignProfile } from "../types";
 
 export const MUSE_PROVIDERS: Record<
   MuseProviderId,
-  { label: string; defaultBase: string; defaultModel: string; hint: string }
+  {
+    label: string;
+    defaultBase: string;
+    defaultModel: string;
+    hint: string;
+    /** Local CLI via muse-bridge — no API key */
+    localCli?: boolean;
+    defaultProxy?: string;
+  }
 > = {
+  codex: {
+    label: "Codex (ChatGPT plan)",
+    defaultBase: "",
+    defaultModel: "codex",
+    hint: "Uses Codex CLI on your Mac — same login as ChatGPT paid / codex login. Run: npm run muse-bridge",
+    localCli: true,
+    defaultProxy: "http://127.0.0.1:5199/v1/muse",
+  },
+  "claude-cli": {
+    label: "Claude Code (local)",
+    defaultBase: "",
+    defaultModel: "claude",
+    hint: "Uses `claude` CLI on your Mac. Run: npm run muse-bridge",
+    localCli: true,
+    defaultProxy: "http://127.0.0.1:5199/v1/muse",
+  },
+  "grok-cli": {
+    label: "Grok CLI (local)",
+    defaultBase: "",
+    defaultModel: "grok",
+    hint: "Uses Grok CLI OAuth on your Mac. Run: npm run muse-bridge",
+    localCli: true,
+    defaultProxy: "http://127.0.0.1:5199/v1/muse",
+  },
   openai: {
-    label: "ChatGPT (OpenAI)",
+    label: "ChatGPT API key",
     defaultBase: "https://api.openai.com/v1",
     defaultModel: "gpt-4o-mini",
-    hint: "Paste an API key from platform.openai.com",
+    hint: "Paste an API key from platform.openai.com (separate from ChatGPT Plus)",
   },
   openrouter: {
     label: "OpenRouter",
@@ -19,7 +51,7 @@ export const MUSE_PROVIDERS: Record<
     hint: "One key, many models — openrouter.ai",
   },
   grok: {
-    label: "Grok (xAI)",
+    label: "Grok API key",
     defaultBase: "https://api.x.ai/v1",
     defaultModel: "grok-3-mini",
     hint: "API key from console.x.ai",
@@ -34,11 +66,15 @@ export const MUSE_PROVIDERS: Record<
 
 export const DEFAULT_MUSE: MuseSettings = {
   apiKey: "",
-  provider: "openai",
-  model: "gpt-4o-mini",
+  provider: "codex",
+  model: "codex",
   baseUrl: "",
-  proxyUrl: "",
+  proxyUrl: "http://127.0.0.1:5199/v1/muse",
 };
+
+export function isLocalCliProvider(id: MuseProviderId): boolean {
+  return Boolean(MUSE_PROVIDERS[id]?.localCli);
+}
 
 export function resolveBaseUrl(s: MuseSettings): string {
   if (s.baseUrl.trim()) return s.baseUrl.trim().replace(/\/$/, "");
@@ -99,81 +135,113 @@ export interface MuseChatRequest {
   settings: MuseSettings;
 }
 
+function parseMuseResponse(data: {
+  content?: string;
+  error?: string;
+  choices?: Array<{ message?: { content?: string } }>;
+}): string {
+  if (data.error) throw new Error(data.error);
+  const text =
+    data.content || data.choices?.[0]?.message?.content || "";
+  if (!text.trim()) throw new Error("Muse returned an empty reply");
+  return text.trim();
+}
+
 export async function callMuse(req: MuseChatRequest): Promise<string> {
   const { settings, messages } = req;
-  if (!settings.apiKey.trim()) {
+  const local = isLocalCliProvider(settings.provider);
+
+  if (!local && !settings.apiKey.trim()) {
     throw new Error(
-      "Add your API key in Muse settings (your key stays on this device).",
+      "Add your API key in Muse settings — or pick Codex / Claude / Grok CLI (local).",
     );
   }
 
-  const body = {
-    model: resolveModel(settings),
-    messages,
-    temperature: 0.85,
-    baseUrl: resolveBaseUrl(settings),
+  // Local CLIs always go through muse-bridge
+  const proxy = local
+    ? settings.proxyUrl.trim() ||
+      MUSE_PROVIDERS[settings.provider].defaultProxy ||
+      "http://127.0.0.1:5199/v1/muse"
+    : settings.proxyUrl.trim() ||
+      (typeof location !== "undefined"
+        ? `${location.origin}/api/muse`
+        : "/api/muse");
+
+  const body = local
+    ? {
+        provider: settings.provider,
+        messages,
+      }
+    : {
+        model: resolveModel(settings),
+        messages,
+        temperature: 0.85,
+        baseUrl: resolveBaseUrl(settings),
+      };
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
   };
+  if (!local && settings.apiKey.trim()) {
+    headers.authorization = `Bearer ${settings.apiKey.trim()}`;
+  }
 
-  // 1) Prefer same-origin proxy (Vercel /api/muse) or user proxy URL
-  const proxy =
-    settings.proxyUrl.trim() ||
-    (typeof location !== "undefined" ? `${location.origin}/api/muse` : "/api/muse");
-
+  // 1) Proxy / muse-bridge
   try {
     const res = await fetch(proxy, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${settings.apiKey.trim()}`,
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
-    if (res.ok) {
-      const data = (await res.json()) as {
-        content?: string;
-        error?: string;
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      if (data.error) throw new Error(data.error);
-      const text =
-        data.content ||
-        data.choices?.[0]?.message?.content ||
-        "";
-      if (!text) throw new Error("Muse returned an empty reply");
-      return text.trim();
+    const errText = await res.text();
+    let data: {
+      content?: string;
+      error?: string;
+      choices?: Array<{ message?: { content?: string } }>;
+    } = {};
+    try {
+      data = errText ? JSON.parse(errText) : {};
+    } catch {
+      if (!res.ok) {
+        throw new Error(
+          local
+            ? `Muse bridge error (${res.status}). Is it running? npm run muse-bridge`
+            : `Muse error (${res.status}): ${errText.slice(0, 200)}`,
+        );
+      }
     }
 
-    // 404 on GitHub Pages — fall through to direct (may fail CORS)
-    if (res.status !== 404 && res.status !== 405) {
-      const errText = await res.text();
-      let msg = `Muse error (${res.status})`;
-      try {
-        const j = JSON.parse(errText) as { error?: string | { message?: string } };
-        if (typeof j.error === "string") msg = j.error;
-        else if (j.error && typeof j.error === "object" && j.error.message)
-          msg = j.error.message;
-      } catch {
-        if (errText) msg = errText.slice(0, 200);
-      }
-      throw new Error(msg);
+    if (!res.ok) {
+      throw new Error(
+        data.error ||
+          (local
+            ? `Bridge HTTP ${res.status}. Run: npm run muse-bridge`
+            : `Muse error (${res.status})`),
+      );
     }
+    return parseMuseResponse(data);
   } catch (e) {
-    // Network / CORS / missing proxy
-    if (e instanceof Error && !e.message.includes("Failed to fetch")) {
-      // rethrow API errors
-      if (!e.message.includes("NetworkError") && !e.message.includes("fetch")) {
-        // keep going only for fetch failures to try direct
-        const isFetchFail =
-          e.message.includes("fetch") ||
-          e.message.includes("Network") ||
-          e.message.includes("Load failed");
-        if (!isFetchFail) throw e;
-      }
+    const msg = e instanceof Error ? e.message : String(e);
+    const isFetchFail =
+      msg.includes("Failed to fetch") ||
+      msg.includes("NetworkError") ||
+      msg.includes("Load failed") ||
+      msg.includes("fetch");
+
+    if (local) {
+      throw new Error(
+        isFetchFail
+          ? "Can't reach Muse bridge. On your Mac run: cd vision && npm run muse-bridge — then set Proxy URL to http://127.0.0.1:5199/v1/muse (or your Mac's LAN IP on phone)."
+          : msg,
+      );
     }
+
+    if (!isFetchFail) throw e;
+    // fall through to direct cloud call
   }
 
-  // 2) Direct OpenAI-compatible call (works if the host allows browser CORS)
+  // 2) Direct OpenAI-compatible call (cloud only; needs CORS)
   const base = resolveBaseUrl(settings);
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
@@ -197,20 +265,17 @@ export async function callMuse(req: MuseChatRequest): Promise<string> {
     } catch {
       if (errText) msg = errText.slice(0, 200);
     }
-    if (res.status === 0 || msg.includes("CORS") || res.type === "opaque") {
-      throw new Error(
-        "This provider blocks browser calls. Deploy vision on Vercel (uses a private proxy) or set a Proxy URL in Muse settings.",
-      );
-    }
-    throw new Error(msg);
+    throw new Error(
+      msg.includes("CORS") || res.type === "opaque"
+        ? "This provider blocks browser calls. Use Codex (local bridge) or deploy on Vercel."
+        : msg,
+    );
   }
 
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
-  const text = data.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error("Empty reply from provider");
-  return text;
+  return parseMuseResponse(data);
 }
 
 export const MUSE_QUICK: Array<{ label: string; prompt: string }> = [

@@ -66,12 +66,32 @@ Data stays in **this browser’s storage** (localStorage). Clearing site data wi
 
 ### Muse (AI) setup
 
-1. Open the **Muse** tab → **Settings**
-2. Pick a provider (ChatGPT / OpenRouter / Grok / custom)
-3. Paste your API key (stored **only on this device**)
-4. Chat or tap a quick chip (affirmations, board read, HD tips, …)
+Muse can use **your ChatGPT paid plan via Codex CLI** (same idea as Caspian Studio) — no separate API key — or cloud API keys.
 
-**Note:** OpenAI blocks browser calls for security. Muse works best when the app is on **Vercel** (included `/api/muse` proxy). On GitHub Pages alone, set a **Proxy URL** or deploy the same repo to Vercel.
+#### A) Codex / Claude / Grok CLI (recommended if you already use them)
+
+On your Mac:
+
+```bash
+# once: log into Codex with your ChatGPT account
+codex login
+
+cd vision
+npm run muse-bridge
+# → http://127.0.0.1:5199
+```
+
+In the app → **Muse → Settings**:
+
+1. Provider: **Codex (ChatGPT plan)** (or Claude / Grok CLI)
+2. Bridge URL: `http://127.0.0.1:5199/v1/muse`  
+   (on phone: `http://YOUR_MAC_IP:5199/v1/muse`, same Wi‑Fi)
+3. Save → chat
+
+#### B) API keys (OpenAI / OpenRouter / Grok / custom)
+
+1. Muse → Settings → pick provider → paste key  
+2. Best with a **Vercel** deploy (`/api/muse` proxy). GitHub Pages alone can’t call OpenAI from the browser without a proxy.
 
 ## Stack
 

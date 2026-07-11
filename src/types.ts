@@ -7,11 +7,22 @@ export type TabId =
   | "stars"
   | "muse";
 
-/** AI companion provider (OpenAI-compatible). */
-export type MuseProviderId = "openai" | "openrouter" | "grok" | "custom";
+/**
+ * AI companion provider.
+ * - openai / openrouter / grok / custom → API keys
+ * - codex / claude-cli / grok-cli → local CLIs via muse-bridge (like Caspian)
+ */
+export type MuseProviderId =
+  | "codex"
+  | "claude-cli"
+  | "grok-cli"
+  | "openai"
+  | "openrouter"
+  | "grok"
+  | "custom";
 
 export interface MuseSettings {
-  /** Prefer user's own key — stored only on this device */
+  /** API key for cloud providers — stored only on this device. Empty for local CLIs. */
   apiKey: string;
   provider: MuseProviderId;
   /** e.g. gpt-4o-mini, grok-3-mini, openai/gpt-4o-mini */
@@ -22,8 +33,10 @@ export interface MuseSettings {
    */
   baseUrl: string;
   /**
-   * Optional full URL to a chat proxy (for GitHub Pages).
-   * If empty, app tries same-origin /api/muse (Vercel).
+   * Proxy / bridge URL.
+   * - Local CLI: http://127.0.0.1:5199/v1/muse (muse-bridge)
+   * - Vercel: leave empty for same-origin /api/muse
+   * - GitHub Pages + cloud key: set to your Vercel /api/muse URL
    */
   proxyUrl: string;
 }

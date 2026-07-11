@@ -6,6 +6,7 @@ import {
   MUSE_QUICK,
   buildMuseSystemPrompt,
   callMuse,
+  isLocalCliProvider,
 } from "../lib/muse";
 import type { MuseMessage, MuseProviderId, MuseSettings } from "../types";
 
@@ -30,7 +31,9 @@ export function Muse() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [showSettings, setShowSettings] = useState(!museSettings.apiKey);
+  const [showSettings, setShowSettings] = useState(
+    !museSettings.apiKey && !isLocalCliProvider(museSettings.provider),
+  );
   const [draft, setDraft] = useState<MuseSettings>(museSettings);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -122,24 +125,29 @@ export function Muse() {
       </header>
       <p className="lede tight">
         Chat about your board, goals, affirmations, journal, or Human Design.
-        Use <strong>your</strong> ChatGPT / OpenRouter / Grok key — it stays on
-        this device.
+        Prefer <strong>Codex</strong> (your ChatGPT plan via the Mac bridge) — or
+        paste an API key. Never called a “brain.”
       </p>
 
       {showSettings && (
         <section className="card form-card muse-settings">
-          <p className="card-label">Connect your model</p>
+          <p className="card-label">Connect Muse</p>
           <label>
             Provider
             <select
               value={draft.provider}
               onChange={(e) => {
                 const provider = e.target.value as MuseProviderId;
+                const meta = MUSE_PROVIDERS[provider];
                 setDraft((d) => ({
                   ...d,
                   provider,
-                  model: MUSE_PROVIDERS[provider].defaultModel,
+                  model: meta.defaultModel,
                   baseUrl: "",
+                  proxyUrl: meta.localCli
+                    ? meta.defaultProxy || "http://127.0.0.1:5199/v1/muse"
+                    : d.proxyUrl,
+                  apiKey: meta.localCli ? "" : d.apiKey,
                 }));
               }}
             >
@@ -151,51 +159,79 @@ export function Muse() {
             </select>
           </label>
           <p className="muted tiny">{provider.hint}</p>
-          <label>
-            API key
-            <input
-              type="password"
-              autoComplete="off"
-              placeholder="sk-… (stored only on this phone/browser)"
-              value={draft.apiKey}
-              onChange={(e) => setDraft((d) => ({ ...d, apiKey: e.target.value }))}
-            />
-          </label>
-          <label>
-            Model
-            <input
-              value={draft.model}
-              onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value }))}
-              placeholder={provider.defaultModel}
-            />
-          </label>
-          <label>
-            Base URL (optional)
-            <input
-              value={draft.baseUrl}
-              onChange={(e) => setDraft((d) => ({ ...d, baseUrl: e.target.value }))}
-              placeholder={provider.defaultBase}
-            />
-          </label>
-          <label>
-            Proxy URL (optional)
-            <input
-              value={draft.proxyUrl}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, proxyUrl: e.target.value }))
-              }
-              placeholder="Leave empty — uses /api/muse on Vercel"
-            />
-          </label>
-          <p className="muted tiny">
-            On GitHub Pages, OpenAI blocks direct browser calls. Easiest path:
-            deploy this same repo to{" "}
-            <a href="https://vercel.com" target="_blank" rel="noreferrer">
-              Vercel
-            </a>{" "}
-            (free) so Muse can use a private proxy — or paste a proxy URL you
-            trust.
-          </p>
+
+          {isLocalCliProvider(draft.provider) ? (
+            <>
+              <label>
+                Bridge URL
+                <input
+                  value={draft.proxyUrl}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, proxyUrl: e.target.value }))
+                  }
+                  placeholder="http://127.0.0.1:5199/v1/muse"
+                />
+              </label>
+              <p className="muted tiny">
+                On your Mac (same idea as Caspian Studio):
+                <br />
+                <code>cd vision && npm run muse-bridge</code>
+                <br />
+                Phone on Wi‑Fi: use{" "}
+                <code>http://&lt;mac-ip&gt;:5199/v1/muse</code>
+              </p>
+            </>
+          ) : (
+            <>
+              <label>
+                API key
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="sk-… (stored only on this phone/browser)"
+                  value={draft.apiKey}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, apiKey: e.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Model
+                <input
+                  value={draft.model}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, model: e.target.value }))
+                  }
+                  placeholder={provider.defaultModel}
+                />
+              </label>
+              <label>
+                Base URL (optional)
+                <input
+                  value={draft.baseUrl}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, baseUrl: e.target.value }))
+                  }
+                  placeholder={provider.defaultBase}
+                />
+              </label>
+              <label>
+                Proxy URL (optional)
+                <input
+                  value={draft.proxyUrl}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, proxyUrl: e.target.value }))
+                  }
+                  placeholder="Leave empty — uses /api/muse on Vercel"
+                />
+              </label>
+              <p className="muted tiny">
+                API keys need a proxy (Vercel). Or skip keys and use{" "}
+                <strong>Codex (ChatGPT plan)</strong> with the local bridge.
+              </p>
+            </>
+          )}
+
           <div className="add-row">
             <button type="button" className="btn primary" onClick={saveSettings}>
               Save Muse settings
@@ -208,7 +244,7 @@ export function Muse() {
                 setMuseSettings(DEFAULT_MUSE);
               }}
             >
-              Clear key
+              Reset
             </button>
           </div>
         </section>
