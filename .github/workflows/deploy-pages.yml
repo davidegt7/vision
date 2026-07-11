@@ -24,7 +24,7 @@ jobs:
           node-version: "22"
           cache: npm
       - name: Install
-        run: npm ci
+        run: npm install
       - name: Build
         env:
           VITE_BASE_PATH: /vision/

@@ -32,36 +32,20 @@ Opens full-screen like a native app.
 
 ---
 
-## Deploy for real (HTTPS — best for phones)
+## Live site (no Mac hosting)
 
-HTTPS is required for reliable install, notifications, and service worker on real devices.
+**Production URL:**  
+**https://davidegt7.github.io/vision/**
 
-### Option A — Vercel (easiest)
+Pushes to `main` deploy automatically (GitHub Actions → GitHub Pages).
 
-```bash
-cd vision
-npm i -g vercel   # once
-vercel
-```
+### Install on your phone
 
-Follow prompts. You get a URL like `https://vision-xxx.vercel.app` — open that in phone Chrome/Safari.
+1. Open the URL above in **Safari** (iPhone) or **Chrome** (Android)
+2. **iPhone:** Share → **Add to Home Screen**
+3. **Android:** Menu → **Install app** / Add to Home screen
 
-### Option B — Netlify
-
-```bash
-cd vision
-npm run build
-npx netlify deploy --prod --dir=dist
-```
-
-### Option C — Any static host
-
-```bash
-npm run build
-# upload the `dist/` folder
-```
-
-`vercel.json` and `netlify.toml` are included for SPA routing.
+No computer required after deploy. HTTPS works properly for install.
 
 ---
 
