@@ -11,6 +11,7 @@
     "phone": "npm run build && npx --yes serve dist -l tcp://0.0.0.0:5188"
   },
   "dependencies": {
+    "astronomy-engine": "^2.1.19",
     "date-fns": "^4.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

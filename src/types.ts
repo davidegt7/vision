@@ -93,11 +93,40 @@ export type ZodiacSign =
   | "aquarius"
   | "pisces";
 
+/** Saved Human Design chart (computed or manual). */
+export interface HumanDesignProfile {
+  type: string;
+  strategy: string;
+  authority: string;
+  profile: string;
+  definition: string;
+  notSelf: string;
+  signature: string;
+  consciousSun: string;
+  unconsciousSun: string;
+  definedChannels: string[];
+  centers: Record<string, boolean>;
+  approximate: boolean;
+  notes: string[];
+  birthLocal: string;
+  computedAt: string;
+  /** How the chart was created */
+  source: "computed" | "manual";
+}
+
 export interface UserProfile {
   name: string;
   birthDate: string; // YYYY-MM-DD
+  /** HH:mm local — important for Human Design */
+  birthTime?: string;
+  /** Minutes east of UTC at birth (e.g. -300 for US Eastern standard) */
+  birthTzOffsetMinutes?: number;
+  /** City / place label for display only */
+  birthPlace?: string;
   /** Override auto sign if set */
   sign?: ZodiacSign;
   notifications: boolean;
   notifHour: number; // 0-23 local
+  /** Full Human Design chart when set */
+  humanDesign?: HumanDesignProfile | null;
 }

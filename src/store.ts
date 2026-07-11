@@ -395,7 +395,7 @@ export const useVision = create<VisionState>()(
     }),
     {
       name: "vision-app-v1",
-      version: 2,
+      version: 3,
       partialize: (s) => ({
         boards: s.boards,
         activeBoardId: s.activeBoardId,

@@ -3,6 +3,7 @@ import { useVision } from "../store";
 import { SIGNS, dailyHoroscope, signFromBirthDate } from "../lib/astrology";
 import { todayKey } from "../lib/prompts";
 import type { ZodiacSign } from "../types";
+import { HumanDesignPanel } from "./HumanDesign";
 
 export function Stars() {
   const profile = useVision((s) => s.profile);
@@ -65,7 +66,8 @@ export function Stars() {
         </div>
       </header>
       <p className="lede tight">
-        Soft guidance, not dogma. Set your birthday once — optional daily nudge.
+        Soft guidance, not dogma. Astrology daily + your Human Design chart in one
+        place — optional daily nudge.
       </p>
 
       <section className="card form-card">
@@ -142,6 +144,8 @@ export function Stars() {
       ) : (
         <p className="empty">Add a birthday to unlock today’s reading.</p>
       )}
+
+      <HumanDesignPanel />
     </div>
   );
 }

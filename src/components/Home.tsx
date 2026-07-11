@@ -18,6 +18,7 @@ export function Home() {
   const signMeta = SIGNS.find((x) => x.id === sign);
 
   const name = profile.name?.trim() || "dreamer";
+  const hd = profile.humanDesign;
 
   return (
     <div className="page home">
@@ -29,9 +30,21 @@ export function Home() {
         </h1>
         <p className="lede">
           Your dream life, all in one place — boards, check-offs, sleep
-          affirmations, prompts & stars. No app-hopping.
+          affirmations, prompts, stars & Human Design. No app-hopping.
         </p>
       </header>
+
+      {hd && (
+        <section className="card hd-home" onClick={() => setTab("stars")}>
+          <p className="card-label">Human Design</p>
+          <p className="hd-home-type">{hd.type}</p>
+          <div className="chip-row">
+            <span className="chip">{hd.profile}</span>
+            <span className="chip">{hd.strategy}</span>
+          </div>
+          <span className="card-cta">Open full chart →</span>
+        </section>
+      )}
 
       <div className="stat-row">
         <button type="button" className="stat-card" onClick={() => setTab("board")}>
