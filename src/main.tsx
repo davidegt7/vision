@@ -103,7 +103,8 @@ async function setupServiceWorker() {
   }
 
   try {
-    await navigator.serviceWorker.register("/sw.js");
+    const swUrl = `${import.meta.env.BASE_URL}sw.js`.replace(/\/{2,}/g, "/");
+    await navigator.serviceWorker.register(swUrl);
   } catch {
     /* ignore */
   }

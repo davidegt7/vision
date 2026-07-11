@@ -2,7 +2,7 @@
   "name": "vision",
   "short_name": "vision",
   "description": "Your dream life, all in one place — vision boards, manifestation, affirmations, journal & astrology.",
-  "id": "/",
+  "id": ".",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

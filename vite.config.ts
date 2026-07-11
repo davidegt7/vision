@@ -4,6 +4,9 @@ import react from "@vitejs/plugin-react";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // GitHub Pages project site: https://davidegt7.github.io/vision/
+  // Local / Vercel: leave unset or VITE_BASE_PATH=/
+  base: process.env.VITE_BASE_PATH || "/",
   server: {
     host: true,
     port: 5188,
