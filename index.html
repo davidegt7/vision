@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1a1028" />
+    <meta name="description" content="vision — your dream life, all in one place." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="vision" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <title>vision</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0e0a14;
+        color: #f4eef8;
+        font-family: system-ui, -apple-system, sans-serif;
+        min-height: 100%;
+        min-height: 100dvh;
+      }
+      #root {
+        min-height: 100dvh;
+      }
+      #boot {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 2rem 1.25rem;
+        text-align: center;
+        box-sizing: border-box;
+      }
+      #boot h1 {
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: lowercase;
+        margin: 0;
+        font-size: 1.5rem;
+        color: #c4a0ff;
+      }
+      #boot p {
+        margin: 0;
+        color: #9a8eab;
+        font-size: 0.95rem;
+        max-width: 20rem;
+        line-height: 1.45;
+      }
+      #boot button {
+        margin-top: 0.75rem;
+        padding: 0.75rem 1.1rem;
+        border: none;
+        border-radius: 12px;
+        background: #6b4a9e;
+        color: #fff;
+        font-size: 16px;
+      }
+      #boot .secondary {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #f4eef8;
+      }
+      #boot.hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="boot">
+        <h1>vision</h1>
+        <p id="boot-msg">Loading your dream space…</p>
+        <div id="boot-actions" style="display: none; flex-direction: column; gap: 0.5rem">
+          <button type="button" id="boot-retry">Try again</button>
+          <button type="button" id="boot-reset" class="secondary">
+            Clear saved data &amp; retry
+          </button>
+        </div>
+      </div>
+    </div>
+    <script>
+      // If the app JS never mounts (Wi‑Fi / stuck Home Screen), show help after 8s
+      window.__visionBootTimer = setTimeout(function () {
+        var boot = document.getElementById("boot");
+        var msg = document.getElementById("boot-msg");
+        var actions = document.getElementById("boot-actions");
+        if (!boot || boot.getAttribute("data-ready") === "1") return;
+        if (msg) {
+          msg.textContent =
+            "Still loading. Keep your computer awake on the same Wi‑Fi, or clear data below.";
+        }
+        if (actions) actions.style.display = "flex";
+      }, 8000);
+
+      document.getElementById("boot-retry")?.addEventListener("click", function () {
+        location.reload();
+      });
+      document.getElementById("boot-reset")?.addEventListener("click", function () {
+        try {
+          localStorage.removeItem("vision-app-v1");
+        } catch (e) {}
+        if ("caches" in window) {
+          caches.keys().then(function (keys) {
+            return Promise.all(keys.map(function (k) {
+              return caches.delete(k);
+            }));
+          }).finally(function () {
+            location.reload();
+          });
+        } else {
+          location.reload();
+        }
+      });
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

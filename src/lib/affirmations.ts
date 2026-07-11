@@ -1,0 +1,17 @@
+export const STARTER_AFFIRMATIONS = [
+  "I am becoming the person I dream of being.",
+  "My pace is perfect for me.",
+  "I attract what is meant for me with ease.",
+  "I am safe to want more.",
+  "Rest is productive. I honor my energy.",
+  "I trust the timing of my life.",
+  "I am worthy of a soft, abundant life.",
+  "Every day I take one small step toward my vision.",
+  "My dreams are valid and already in motion.",
+  "I choose peace over pressure.",
+  "I am allowed to take up space.",
+  "Good things flow to me and through me.",
+  "I celebrate progress, not perfection.",
+  "I am rooted, rising, and ready.",
+  "My future self is proud of me already.",
+];

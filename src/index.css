@@ -1,0 +1,92 @@
+:root {
+  color-scheme: dark;
+  --bg: #0e0a14;
+  --bg-elev: #16101f;
+  --panel: #1c1428;
+  --panel-2: #241a32;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #f4eef8;
+  --muted: #9a8eab;
+  --accent: #c4a0ff;
+  --accent-2: #ffb3c7;
+  --gold: #e8c99a;
+  --ok: #8fd4a8;
+  --danger: #ff8a9a;
+  --radius: 16px;
+  --font: "DM Sans", system-ui, sans-serif;
+  --display: "Cormorant Garamond", Georgia, serif;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.45;
+  background: var(--bg);
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* iOS Safari address bar friendly height */
+  height: 100%;
+  height: -webkit-fill-available;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  /* Prefer min-height over height:100% — iOS standalone often collapses height:100% to black */
+  height: auto;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+body {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(196, 160, 255, 0.14), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(255, 179, 199, 0.08), transparent),
+    var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  /* Safe areas for notched iPhones */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0
+    env(safe-area-inset-left);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  /* Prevent iOS Safari zoom-on-focus (needs ≥16px) */
+  font-size: 16px;
+}
+
+button {
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+img {
+  max-width: 100%;
+  -webkit-touch-callout: none;
+}
+
+/* Standalone PWA (Add to Home Screen) */
+@media all and (display-mode: standalone) {
+  body {
+    /* status bar already handled by black-translucent */
+  }
+}
