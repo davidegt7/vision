@@ -12,6 +12,7 @@
     "muse-bridge": "node server/muse-bridge.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.7",
     "astronomy-engine": "^2.1.19",
     "date-fns": "^4.1.0",
     "react": "^19.1.0",

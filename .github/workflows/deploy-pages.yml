@@ -28,6 +28,11 @@ jobs:
       - name: Build
         env:
           VITE_BASE_PATH: /vision/
+          # Optional: set these as repo variables to switch sign-in on.
+          # The anon key ships in client code by design — it is not a secret,
+          # so a repo *variable* is the right home for it, not a secret.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

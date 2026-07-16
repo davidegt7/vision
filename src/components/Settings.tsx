@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { persistedSlice, useVision } from "../store";
+import { Account } from "./Account";
 import { AppearancePicker } from "./AppearancePicker";
 import { LanguagePicker } from "./LanguagePicker";
 import {
@@ -248,6 +249,9 @@ export function Settings() {
         </div>
         {status && <p className="status-line">{status}</p>}
       </section>
+
+      {/* Account */}
+      <Account />
 
       {/* Backup */}
       <section className="card form-card">

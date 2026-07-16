@@ -64,6 +64,7 @@ No computer required after deploy. HTTPS works properly for install.
 | **Human Design** | Calculate or paste your chart (under Stars) |
 | **Muse** | Soft AI companion via Codex CLI on your Mac |
 | **Backup** | Save everything to a file, restore it on any device (Settings → Backup) |
+| **Sign-in** | Optional accounts — email link, Google, Apple (off until Supabase is set up) |
 
 Data stays in **this browser’s storage** (localStorage). Clearing site data — or losing the phone — wipes boards, goals and journal.
 
@@ -77,6 +78,40 @@ There is no account and no server, so **the file is the only safety net**.
 - Your Muse **API key is never written to the file**; the key already on the device is kept when you restore.
 
 Restoring is also how you move to a new phone: save on the old one, open vision on the new one, restore.
+
+---
+
+## Sign-in (optional — off by default)
+
+**Signing in does not sync or back up anything yet.** It creates an account and nothing more; boards and journal still live only in the browser, and the backup file above is still the only recovery path. Sync is a later, bigger job (board images need blob storage). The Account card says this out loud so an account never reads as "my stuff is safe now".
+
+Until it's configured, vision runs exactly as before and Settings → Account explains it isn't switched on. `supabase-js` (~57kB gzipped) is code-split and **never downloads** while sign-in is off.
+
+### Switching it on
+
+1. Create a free project at [supabase.com](https://supabase.com) (David has to do this — it needs an account).
+2. **Project Settings → API**: copy the **Project URL** and the **anon public** key.
+   The anon key is designed to ship in client code — it is *not* a secret. Row-level security protects user data.
+3. **Local dev** — `cp .env.example .env.local` and paste both in. (`.env.*` is gitignored.)
+4. **Live site** — GitHub repo → Settings → Secrets and variables → Actions → **Variables** → add:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+
+   Repo *variables*, not secrets: the anon key is public by design, and secrets aren't readable in a Pages build anyway. The workflow already passes both through.
+5. **Supabase → Authentication → URL Configuration**, add to redirect URLs:
+   - `https://davidegt7.github.io/vision/` (live — the trailing `/vision/` matters)
+   - `http://localhost:5188/` (dev)
+6. **Supabase → Authentication → Providers**: enable **Email**. For **Google**, add OAuth credentials. **Apple** needs a paid Apple developer account ($99/yr) — the button is there, but it errors until configured, and says so.
+
+Push to `main` after adding the variables; the next deploy picks them up.
+
+### Sign-in methods
+
+| Method | Notes |
+|--------|-------|
+| **Email link** | No password. Most reliable in an iPhone home-screen PWA. |
+| **Google** | One tap. OAuth redirects can be fiddly in standalone PWA mode. |
+| **Apple** | Expected on iPhone; needs the paid developer account. |
 
 ### Muse (AI) — Codex only (for now)
 
