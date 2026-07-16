@@ -63,8 +63,20 @@ No computer required after deploy. HTTPS works properly for install.
 | **Stars** | Birthday → daily reading + optional notifications |
 | **Human Design** | Calculate or paste your chart (under Stars) |
 | **Muse** | Soft AI companion via Codex CLI on your Mac |
+| **Backup** | Save everything to a file, restore it on any device (Settings → Backup) |
 
-Data stays in **this browser’s storage** (localStorage). Clearing site data wipes boards.
+Data stays in **this browser’s storage** (localStorage). Clearing site data — or losing the phone — wipes boards, goals and journal.
+
+### Backup & restore
+
+There is no account and no server, so **the file is the only safety net**.
+
+- **Settings → Backup → Save a backup** writes `vision-backup-YYYY-MM-DD.json` (boards, goals, journal, affirmations, profile, Muse history).
+- **Restore from file** replaces everything on the device. It shows what's there now vs. what's in the file and asks first — but it can't be undone.
+- Board images are embedded, so a picture-heavy board makes a bigger file.
+- Your Muse **API key is never written to the file**; the key already on the device is kept when you restore.
+
+Restoring is also how you move to a new phone: save on the old one, open vision on the new one, restore.
 
 ### Muse (AI) — Codex only (for now)
 

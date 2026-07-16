@@ -41,17 +41,35 @@ function defaultBoard(): VisionBoard {
   };
 }
 
-interface VisionState {
-  tab: TabId;
+/** The slice that survives a reload — and the shape a backup file carries. */
+export interface PersistedVision {
   boards: VisionBoard[];
   activeBoardId: string;
   goals: Goal[];
   affirmations: Affirmation[];
   journal: JournalEntry[];
   profile: UserProfile;
-  sleepMode: boolean;
   museSettings: MuseSettings;
   museMessages: MuseMessage[];
+}
+
+export const PERSIST_NAME = "vision-app-v1";
+export const PERSIST_VERSION = 4;
+
+const PERSISTED_KEYS = [
+  "boards",
+  "activeBoardId",
+  "goals",
+  "affirmations",
+  "journal",
+  "profile",
+  "museSettings",
+  "museMessages",
+] as const;
+
+export interface VisionState extends PersistedVision {
+  tab: TabId;
+  sleepMode: boolean;
 
   setTab: (t: TabId) => void;
   setSleepMode: (v: boolean) => void;
@@ -97,6 +115,108 @@ interface VisionState {
   setProfile: (patch: Partial<UserProfile>) => void;
   setAppearance: (patch: Partial<AppearanceSettings>) => void;
   resolvedSign: () => ZodiacSign | null;
+}
+
+/** The data worth keeping — what gets saved, and what a backup file carries. */
+export function persistedSlice(s: VisionState): PersistedVision {
+  return {
+    boards: s.boards,
+    activeBoardId: s.activeBoardId,
+    goals: s.goals,
+    affirmations: s.affirmations,
+    journal: s.journal,
+    profile: s.profile,
+    museSettings: s.museSettings,
+    museMessages: s.museMessages.slice(-40),
+  };
+}
+
+/**
+ * Keep only known data keys. Rehydrate reads our own localStorage, but a restored
+ * backup is an arbitrary file — it must never be able to overwrite store actions.
+ */
+function pickPersisted(raw: unknown): Partial<PersistedVision> {
+  const out: Record<string, unknown> = {};
+  if (raw && typeof raw === "object") {
+    for (const key of PERSISTED_KEYS) {
+      const value = (raw as Record<string, unknown>)[key];
+      if (value !== undefined) out[key] = value;
+    }
+  }
+  return out as Partial<PersistedVision>;
+}
+
+/**
+ * Fold saved data onto a live state, repairing anything missing or stale.
+ * Used both on reload and when restoring a backup file, so the two paths can't drift.
+ * If localStorage is full / corrupt (common after big image boards on iOS),
+ * don't crash the whole app into a black screen.
+ */
+export function mergeVisionState(
+  persisted: unknown,
+  current: VisionState,
+): VisionState {
+  try {
+    const p = pickPersisted(persisted);
+    const boards =
+      Array.isArray(p.boards) && p.boards.length > 0
+        ? p.boards.map((b) => ({
+            ...b,
+            items: (b.items || []).map((it) => ({
+              ...it,
+              kind: it.kind || (it.src ? ("image" as const) : ("text" as const)),
+              src: it.src || "",
+              label: it.label || "",
+            })),
+          }))
+        : current.boards;
+    const activeBoardId =
+      p.activeBoardId && boards.some((b) => b.id === p.activeBoardId)
+        ? p.activeBoardId
+        : boards[0]!.id;
+    const rawMuse = {
+      ...DEFAULT_MUSE,
+      ...current.museSettings,
+      ...(p.museSettings || {}),
+    };
+    return {
+      ...current,
+      ...p,
+      boards,
+      activeBoardId,
+      goals: Array.isArray(p.goals) ? p.goals : current.goals,
+      affirmations: Array.isArray(p.affirmations)
+        ? p.affirmations
+        : current.affirmations,
+      journal: Array.isArray(p.journal) ? p.journal : current.journal,
+      profile: {
+        ...current.profile,
+        ...(p.profile || {}),
+        language: ((): AppLanguage => {
+          const raw = p.profile?.language || current.profile.language || "en";
+          return isLangId(raw) ? raw : "en";
+        })(),
+        appearance: (() => {
+          const merged = {
+            ...DEFAULT_APPEARANCE,
+            ...current.profile.appearance,
+            ...(p.profile?.appearance || {}),
+          };
+          return {
+            mode: merged.mode === "day" ? "day" : "night",
+            accent: normalizeAccent(merged.accent),
+          } as AppearanceSettings;
+        })(),
+      },
+      // Codex-only + auto LAN bridge (phone must not keep 127.0.0.1)
+      museSettings: normalizeMuseSettings(rawMuse),
+      museMessages: Array.isArray(p.museMessages)
+        ? p.museMessages
+        : current.museMessages,
+    };
+  } catch {
+    return current;
+  }
 }
 
 const starterAffirms: Affirmation[] = STARTER_AFFIRMATIONS.map((text) => ({
@@ -438,88 +558,10 @@ export const useVision = create<VisionState>()(
       },
     }),
     {
-      name: "vision-app-v1",
-      version: 4,
-      partialize: (s) => ({
-        boards: s.boards,
-        activeBoardId: s.activeBoardId,
-        goals: s.goals,
-        affirmations: s.affirmations,
-        journal: s.journal,
-        profile: s.profile,
-        museSettings: s.museSettings,
-        museMessages: s.museMessages.slice(-40),
-      }),
-      // If localStorage is full / corrupt (common after big image boards on iOS),
-      // don't crash the whole app into a black screen.
-      merge: (persisted, current) => {
-        try {
-          const p = (persisted || {}) as Partial<VisionState>;
-          const boards = Array.isArray(p.boards) && p.boards.length > 0
-            ? p.boards.map((b) => ({
-                ...b,
-                items: (b.items || []).map((it) => ({
-                  ...it,
-                  kind: it.kind || (it.src ? ("image" as const) : ("text" as const)),
-                  src: it.src || "",
-                  label: it.label || "",
-                })),
-              }))
-            : current.boards;
-          const activeBoardId =
-            p.activeBoardId && boards.some((b) => b.id === p.activeBoardId)
-              ? p.activeBoardId
-              : boards[0]!.id;
-          const rawMuse = {
-            ...DEFAULT_MUSE,
-            ...current.museSettings,
-            ...((p as { museSettings?: MuseSettings }).museSettings || {}),
-          };
-          return {
-            ...current,
-            ...p,
-            boards,
-            activeBoardId,
-            goals: Array.isArray(p.goals) ? p.goals : current.goals,
-            affirmations: Array.isArray(p.affirmations)
-              ? p.affirmations
-              : current.affirmations,
-            journal: Array.isArray(p.journal) ? p.journal : current.journal,
-            profile: {
-              ...current.profile,
-              ...(p.profile || {}),
-              language: ((): AppLanguage => {
-                const raw =
-                  (p.profile as { language?: string } | undefined)?.language ||
-                  current.profile.language ||
-                  "en";
-                return isLangId(raw) ? raw : "en";
-              })(),
-              appearance: (() => {
-                const merged = {
-                  ...DEFAULT_APPEARANCE,
-                  ...current.profile.appearance,
-                  ...((p.profile as { appearance?: AppearanceSettings } | undefined)
-                    ?.appearance || {}),
-                };
-                return {
-                  mode: merged.mode === "day" ? "day" : "night",
-                  accent: normalizeAccent(merged.accent),
-                } as AppearanceSettings;
-              })(),
-            },
-            // Codex-only + auto LAN bridge (phone must not keep 127.0.0.1)
-            museSettings: normalizeMuseSettings(rawMuse),
-            museMessages: Array.isArray(
-              (p as { museMessages?: MuseMessage[] }).museMessages,
-            )
-              ? (p as { museMessages: MuseMessage[] }).museMessages
-              : current.museMessages,
-          };
-        } catch {
-          return current;
-        }
-      },
+      name: PERSIST_NAME,
+      version: PERSIST_VERSION,
+      partialize: persistedSlice,
+      merge: (persisted, current) => mergeVisionState(persisted, current),
     },
   ),
 );

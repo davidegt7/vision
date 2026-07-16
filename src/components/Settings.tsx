@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { useVision } from "../store";
+import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
+import { persistedSlice, useVision } from "../store";
 import { AppearancePicker } from "./AppearancePicker";
 import { LanguagePicker } from "./LanguagePicker";
 import {
@@ -9,6 +10,14 @@ import {
   resolveBridgeUrl,
   suggestedBridgeUrl,
 } from "../lib/muse";
+import {
+  countsOf,
+  describeCounts,
+  downloadBackup,
+  formatBytes,
+  parseBackup,
+  restoreBackup,
+} from "../lib/backup";
 import type { MuseProviderId } from "../types";
 
 /**
@@ -33,6 +42,8 @@ export function Settings() {
   );
   const [status, setStatus] = useState("");
   const [checking, setChecking] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [backupStatus, setBackupStatus] = useState("");
 
   useEffect(() => {
     setBridgeUrl(resolveBridgeUrl(museSettings.proxyUrl));
@@ -71,6 +82,44 @@ export function Settings() {
       );
     }
     setChecking(false);
+  };
+
+  const onExport = () => {
+    try {
+      const { name, bytes } = downloadBackup();
+      setBackupStatus(`Saved ${name} · ${formatBytes(bytes)}`);
+    } catch {
+      setBackupStatus("Couldn’t save the file — your board images may be too large.");
+    }
+  };
+
+  const onPickFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = ""; // so picking the same file twice still fires
+    if (!file) return;
+    setBackupStatus("");
+    try {
+      const parsed = parseBackup(await file.text());
+      const incoming = describeCounts(countsOf(parsed.data));
+      const here = describeCounts(countsOf(persistedSlice(useVision.getState())));
+      const when = new Date(parsed.exportedAt);
+      const savedOn = Number.isNaN(when.getTime())
+        ? "this backup"
+        : `the backup from ${when.toLocaleDateString()}`;
+      const ok = window.confirm(
+        `Restore ${savedOn}?\n\nWhat’s on this device now (${here}) will be replaced by what’s in the file (${incoming}).\n\nThis can’t be undone.`,
+      );
+      if (!ok) {
+        setBackupStatus("Nothing changed.");
+        return;
+      }
+      setBackupStatus(`Restored ${describeCounts(restoreBackup(parsed))}.`);
+    } catch (err) {
+      setBackupStatus(
+        err instanceof Error ? err.message : "Couldn’t read that file.",
+      );
+    }
   };
 
   return (
@@ -198,6 +247,41 @@ export function Settings() {
           </button>
         </div>
         {status && <p className="status-line">{status}</p>}
+      </section>
+
+      {/* Backup */}
+      <section className="card form-card">
+        <p className="card-label">Backup</p>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Your boards, goals, journal and affirmations live only in this
+          browser. Clearing site data — or losing this phone — takes them with
+          it. Saving a file now means you can always come back.
+        </p>
+
+        <div className="add-row" style={{ marginTop: "0.75rem" }}>
+          <button type="button" className="btn primary" onClick={onExport}>
+            Save a backup
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => fileRef.current?.click()}
+          >
+            Restore from file
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(e) => void onPickFile(e)}
+        />
+        <p className="muted tiny">
+          Restoring replaces everything on this device — you’ll see what changes
+          before it happens. Your Muse API key isn’t written to the file.
+        </p>
+        {backupStatus && <p className="status-line">{backupStatus}</p>}
       </section>
 
       <section className="card form-card">
