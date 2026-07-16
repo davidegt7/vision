@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useVision } from "../store";
+import { useI18n } from "../lib/useI18n";
 
 export function Affirmations() {
+  const { t, bcp47 } = useI18n();
   const affirmations = useVision((s) => s.affirmations);
   const addAffirmation = useVision((s) => s.addAffirmation);
   const toggleFavorite = useVision((s) => s.toggleFavorite);
@@ -36,12 +38,15 @@ export function Affirmations() {
     u.rate = rate;
     u.pitch = 0.95;
     u.volume = 0.9;
-    // Prefer a soft English voice if available
+    // Prefer a voice matching app language
     const voices = window.speechSynthesis.getVoices();
+    const langPrefix = bcp47.split("-")[0] || "en";
     const soft =
+      voices.find((v) => v.lang.toLowerCase().startsWith(langPrefix)) ||
       voices.find((v) => /samantha|karen|moira|female|soft/i.test(v.name)) ||
       voices.find((v) => v.lang.startsWith("en"));
     if (soft) u.voice = soft;
+    u.lang = soft?.lang || bcp47;
     u.onend = () => {
       if (!loopRef.current) {
         setPlaying(false);
@@ -61,7 +66,7 @@ export function Affirmations() {
 
   const startSleep = () => {
     if (!window.speechSynthesis) {
-      alert("Text-to-speech isn’t available in this browser.");
+      alert(t("affirm.ttsMissing"));
       return;
     }
     // Warm voices on some browsers
@@ -78,14 +83,11 @@ export function Affirmations() {
     <div className={`page affirm-page ${sleepMode ? "sleep" : ""}`}>
       <header className="page-head">
         <div>
-          <p className="eyebrow">Affirmations</p>
-          <h1>Words that land</h1>
+          <p className="eyebrow">{t("affirm.eyebrow")}</p>
+          <h1>{t("affirm.title")}</h1>
         </div>
       </header>
-      <p className="lede tight">
-        Loop them as you fall asleep. Favorites play first. Dim the screen and let
-        the night work.
-      </p>
+      <p className="lede tight">{t("affirm.lede")}</p>
 
       <div className="sleep-controls card">
         <div className="sleep-row">
@@ -94,18 +96,18 @@ export function Affirmations() {
             className={`btn primary big ${playing ? "on" : ""}`}
             onClick={() => (playing ? stop() : startSleep())}
           >
-            {playing ? "Pause sleep loop" : "▶ Play as I sleep"}
+            {playing ? t("affirm.sleepStop") : `▶ ${t("affirm.sleepStart")}`}
           </button>
           <button
             type="button"
             className="btn"
             onClick={() => setSleepMode(!sleepMode)}
           >
-            {sleepMode ? "Exit night mode" : "Night mode"}
+            {sleepMode ? t("affirm.nightOn") : t("affirm.nightOff")}
           </button>
         </div>
         <label className="inline">
-          Pace
+          {t("affirm.rate")}
           <input
             type="range"
             min={0.6}
@@ -124,7 +126,7 @@ export function Affirmations() {
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Write your own affirmation…"
+          placeholder={t("affirm.placeholder")}
           onKeyDown={(e) => {
             if (e.key === "Enter" && draft.trim()) {
               addAffirmation(draft);
@@ -141,7 +143,7 @@ export function Affirmations() {
             setDraft("");
           }}
         >
-          Add
+          {t("common.add")}
         </button>
       </div>
 

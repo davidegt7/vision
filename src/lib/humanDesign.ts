@@ -371,6 +371,10 @@ export function computeHumanDesign(input: {
   birthTime?: string;
   /** Timezone offset minutes east of UTC, e.g. -300 for EST. Default: browser local */
   tzOffsetMinutes?: number;
+  /** Birth city label — used for notes / audit trail (zone does the math) */
+  birthPlace?: string;
+  /** IANA zone e.g. America/New_York */
+  birthTimeZone?: string;
 }): HumanDesignChart {
   const notes: string[] = [];
   const approximate = !input.birthTime;
@@ -485,6 +489,16 @@ export function computeHumanDesign(input: {
     approximate,
     notes: [
       ...notes,
+      // City matters because it locks the correct UTC moment (zone + DST), not lat/long houses.
+      input.birthPlace || input.birthTimeZone
+        ? `Birth place: ${input.birthPlace || "—"}${
+            input.birthTimeZone ? ` · ${input.birthTimeZone.replace(/_/g, " ")}` : ""
+          } · offset ${
+            input.tzOffsetMinutes !== undefined
+              ? `${input.tzOffsetMinutes >= 0 ? "+" : ""}${input.tzOffsetMinutes} min`
+              : "local"
+          } (city sets timezone; planets use that exact moment in UTC)`
+        : "No birth city — used browser timezone. Pick a city for a more accurate chart.",
       meta.blurb,
       PROFILE_META[profile] || `Profile ${profile}`,
     ],

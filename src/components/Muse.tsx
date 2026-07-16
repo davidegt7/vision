@@ -1,20 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { useVision } from "../store";
 import {
+  DEFAULT_BRIDGE,
   DEFAULT_MUSE,
-  MUSE_PROVIDERS,
-  MUSE_QUICK,
   buildMuseSystemPrompt,
   callMuse,
-  isLocalCliProvider,
+  checkMuseBridge,
+  isHttpsPublicPage,
+  isLoopbackBridgeUrl,
+  normalizeMuseSettings,
+  resolveBridgeUrl,
+  suggestedBridgeUrl,
+  type BridgeStatus,
 } from "../lib/muse";
-import type { MuseMessage, MuseProviderId, MuseSettings } from "../types";
+import type { MuseMessage } from "../types";
+import { useI18n } from "../lib/useI18n";
 
 function mid() {
   return `m_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 8)}`;
 }
 
 export function Muse() {
+  const { t } = useI18n();
   const setTab = useVision((s) => s.setTab);
   const profile = useVision((s) => s.profile);
   const board = useVision((s) => s.activeBoard());
@@ -28,32 +35,91 @@ export function Muse() {
   const clearMuseMessages = useVision((s) => s.clearMuseMessages);
   const addAffirmation = useVision((s) => s.addAffirmation);
 
+  const suggested = suggestedBridgeUrl();
+  const effectiveUrl = resolveBridgeUrl(museSettings.proxyUrl);
+  const onPhoneOrLan = !isLoopbackBridgeUrl(suggested);
+
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [showSettings, setShowSettings] = useState(
-    !museSettings.apiKey && !isLocalCliProvider(museSettings.provider),
-  );
-  const [draft, setDraft] = useState<MuseSettings>(museSettings);
+  // Draft field tracks user edits; always seed from resolved (not raw loopback).
+  const [bridgeUrl, setBridgeUrl] = useState(effectiveUrl);
+  const [bridge, setBridge] = useState<BridgeStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [editingUrl, setEditingUrl] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Keep bridge URL resolved for Codex (phone LAN fix).
   useEffect(() => {
-    setDraft(museSettings);
-  }, [museSettings]);
+    if (museSettings.provider === "openai") return;
+    const next = normalizeMuseSettings(museSettings);
+    if (museSettings.proxyUrl !== next.proxyUrl) {
+      setMuseSettings(next);
+    }
+    if (!editingUrl) {
+      setBridgeUrl(next.proxyUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [museSettings.proxyUrl, museSettings.provider, editingUrl]);
+
+  const pingBridge = async (url = effectiveUrl) => {
+    setChecking(true);
+    if (museSettings.provider === "openai") {
+      setBridge({
+        ok: Boolean(museSettings.apiKey?.trim()),
+        detail: museSettings.apiKey?.trim()
+          ? "OpenAI API key on this device"
+          : undefined,
+        error: museSettings.apiKey?.trim()
+          ? undefined
+          : "Add an OpenAI API key in Settings",
+      });
+      setChecking(false);
+      return;
+    }
+    const st = await checkMuseBridge(url);
+    setBridge(st);
+    setChecking(false);
+    return st;
+  };
+
+  useEffect(() => {
+    void pingBridge(effectiveUrl);
+    const t = window.setInterval(() => {
+      void pingBridge(effectiveUrl);
+    }, 12_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveUrl, museSettings.provider, museSettings.apiKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [museMessages, busy]);
 
-  const saveSettings = () => {
-    const next = {
-      ...draft,
-      model:
-        draft.model.trim() ||
-        MUSE_PROVIDERS[draft.provider].defaultModel,
-    };
-    setMuseSettings(next);
-    setShowSettings(false);
+  const saveBridge = () => {
+    const url = resolveBridgeUrl(bridgeUrl.trim() || suggested);
+    setEditingUrl(false);
+    setMuseSettings({
+      ...museSettings,
+      ...DEFAULT_MUSE,
+      provider: museSettings.provider === "openai" ? "openai" : "codex",
+      apiKey: museSettings.provider === "openai" ? museSettings.apiKey : "",
+      proxyUrl: url,
+    });
+    setBridgeUrl(url);
+    void pingBridge(url);
+    setError("");
+  };
+
+  const useSuggested = () => {
+    setEditingUrl(false);
+    setBridgeUrl(suggested);
+    setMuseSettings({
+      ...museSettings,
+      provider: "codex",
+      proxyUrl: suggested,
+    });
+    void pingBridge(suggested);
     setError("");
   };
 
@@ -71,6 +137,18 @@ export function Muse() {
     pushMuseMessage(userMsg);
     setBusy(true);
     try {
+      const settings = {
+        ...DEFAULT_MUSE,
+        ...museSettings,
+        provider:
+          museSettings.provider === "openai"
+            ? ("openai" as const)
+            : ("codex" as const),
+        proxyUrl:
+          museSettings.provider === "openai"
+            ? museSettings.proxyUrl || resolveBridgeUrl("")
+            : resolveBridgeUrl(museSettings.proxyUrl || bridgeUrl),
+      };
       const system = buildMuseSystemPrompt({
         name: profile.name,
         profile,
@@ -89,7 +167,7 @@ export function Muse() {
         }));
 
       const reply = await callMuse({
-        settings: museSettings.apiKey ? museSettings : draft,
+        settings,
         messages: [{ role: "system", content: system }, ...history],
       });
 
@@ -101,162 +179,148 @@ export function Muse() {
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      void pingBridge();
     } finally {
       setBusy(false);
     }
   };
 
-  const provider = MUSE_PROVIDERS[draft.provider];
+  const ready = bridge?.ok;
+
+  const chips = [
+    {
+      label: t("muse.chip.soften"),
+      prompt:
+        "Look at my open goals and rewrite 3 of them as kinder, more magnetic intentions — short.",
+    },
+    {
+      label: t("muse.chip.affirm"),
+      prompt:
+        "Write 5 fresh affirmations tailored to my board, goals, and Human Design if I have one.",
+    },
+    {
+      label: t("muse.chip.journal"),
+      prompt:
+        "Give me one gentle journaling prompt for tonight based on what I'm working on, then ask me one follow-up question.",
+    },
+    {
+      label: t("muse.chip.board"),
+      prompt:
+        "From the labels and themes on my vision board, what story am I telling about my future?",
+    },
+    {
+      label: t("muse.chip.hd"),
+      prompt:
+        "Using my Human Design (if set), give me 3 tiny practices for today that match my strategy and authority.",
+    },
+  ];
 
   return (
     <div className="page muse-page">
       <header className="page-head">
         <div>
-          <p className="eyebrow">Muse</p>
-          <h1>Your soft AI ally</h1>
+          <p className="eyebrow">{t("muse.eyebrow")}</p>
+          <h1>{t("muse.title")}</h1>
         </div>
-        <button
-          type="button"
-          className="btn ghost"
-          onClick={() => setShowSettings((v) => !v)}
-        >
-          {showSettings ? "Close" : "Settings"}
-        </button>
+        <span className={`muse-status ${ready ? "on" : "off"}`}>
+          {checking
+            ? t("muse.checking")
+            : ready
+              ? museSettings.provider === "openai"
+                ? "API ready"
+                : t("muse.ready")
+              : museSettings.provider === "openai"
+                ? "Need API key"
+                : t("muse.off")}
+        </span>
       </header>
-      <p className="lede tight">
-        Chat about your board, goals, affirmations, journal, or Human Design.
-        Prefer <strong>Codex</strong> (your ChatGPT plan via the Mac bridge) — or
-        paste an API key. Never called a “brain.”
-      </p>
+      <p className="lede tight">{t("muse.lede")}</p>
 
-      {showSettings && (
-        <section className="card form-card muse-settings">
-          <p className="card-label">Connect Muse</p>
-          <label>
-            Provider
-            <select
-              value={draft.provider}
-              onChange={(e) => {
-                const provider = e.target.value as MuseProviderId;
-                const meta = MUSE_PROVIDERS[provider];
-                setDraft((d) => ({
-                  ...d,
-                  provider,
-                  model: meta.defaultModel,
-                  baseUrl: "",
-                  proxyUrl: meta.localCli
-                    ? meta.defaultProxy || "http://127.0.0.1:5199/v1/muse"
-                    : d.proxyUrl,
-                  apiKey: meta.localCli ? "" : d.apiKey,
-                }));
-              }}
-            >
-              {(Object.keys(MUSE_PROVIDERS) as MuseProviderId[]).map((id) => (
-                <option key={id} value={id}>
-                  {MUSE_PROVIDERS[id].label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="muted tiny">{provider.hint}</p>
-
-          {isLocalCliProvider(draft.provider) ? (
-            <>
-              <label>
-                Bridge URL
-                <input
-                  value={draft.proxyUrl}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, proxyUrl: e.target.value }))
-                  }
-                  placeholder="http://127.0.0.1:5199/v1/muse"
-                />
-              </label>
-              <p className="muted tiny">
-                On your Mac (same idea as Caspian Studio):
-                <br />
-                <code>cd vision && npm run muse-bridge</code>
-                <br />
-                Phone on Wi‑Fi: use{" "}
-                <code>http://&lt;mac-ip&gt;:5199/v1/muse</code>
-              </p>
-            </>
-          ) : (
-            <>
-              <label>
-                API key
-                <input
-                  type="password"
-                  autoComplete="off"
-                  placeholder="sk-… (stored only on this phone/browser)"
-                  value={draft.apiKey}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, apiKey: e.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Model
-                <input
-                  value={draft.model}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, model: e.target.value }))
-                  }
-                  placeholder={provider.defaultModel}
-                />
-              </label>
-              <label>
-                Base URL (optional)
-                <input
-                  value={draft.baseUrl}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, baseUrl: e.target.value }))
-                  }
-                  placeholder={provider.defaultBase}
-                />
-              </label>
-              <label>
-                Proxy URL (optional)
-                <input
-                  value={draft.proxyUrl}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, proxyUrl: e.target.value }))
-                  }
-                  placeholder="Leave empty — uses /api/muse on Vercel"
-                />
-              </label>
-              <p className="muted tiny">
-                API keys need a proxy (Vercel). Or skip keys and use{" "}
-                <strong>Codex (ChatGPT plan)</strong> with the local bridge.
-              </p>
-            </>
-          )}
-
-          <div className="add-row">
-            <button type="button" className="btn primary" onClick={saveSettings}>
-              Save Muse settings
-            </button>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => {
-                setDraft(DEFAULT_MUSE);
-                setMuseSettings(DEFAULT_MUSE);
-              }}
-            >
-              Reset
-            </button>
-          </div>
-        </section>
-      )}
+      <section className="card form-card muse-settings">
+        <p className="card-label">{t("muse.connection")}</p>
+        {!ready && (
+          <ol className="muse-setup">
+            <li>{t("muse.setup1")}</li>
+            <li>
+              <code>npm run muse-bridge</code>
+            </li>
+            <li>{t("muse.setup3")}</li>
+          </ol>
+        )}
+        {onPhoneOrLan && (
+          <p className="status-line muse-phone-hint">
+            {t("muse.usingMac")} <code>{effectiveUrl}</code>
+            {bridgeUrl.trim() !== suggested && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="btn ghost tiny-btn"
+                  onClick={useSuggested}
+                >
+                  {t("muse.resetAuto")}
+                </button>
+              </>
+            )}
+          </p>
+        )}
+        {isHttpsPublicPage() && (
+          <p className="status-line" style={{ color: "var(--danger)" }}>
+            {t("muse.httpsBlock")}
+          </p>
+        )}
+        <label>
+          {t("muse.bridgeUrl")}
+          <input
+            value={bridgeUrl}
+            onChange={(e) => {
+              setEditingUrl(true);
+              setBridgeUrl(e.target.value);
+            }}
+            onBlur={() => {
+              if (editingUrl) saveBridge();
+            }}
+            placeholder={suggested}
+          />
+        </label>
+        <p className="muted tiny">
+          {t("muse.autoDevice")} <code>{suggested}</code>
+          <br />
+          {t("muse.laptopOnly")} <code>{DEFAULT_BRIDGE}</code>
+        </p>
+        {bridge?.error && !ready && (
+          <p className="status-line" style={{ color: "var(--danger)" }}>
+            {bridge.error}
+            {onPhoneOrLan && isLoopbackBridgeUrl(bridgeUrl) && (
+              <> {t("muse.loopbackHint")}</>
+            )}
+          </p>
+        )}
+        {ready && bridge?.detail && (
+          <p className="status-line">{bridge.detail}</p>
+        )}
+        <div className="add-row">
+          <button type="button" className="btn primary" onClick={saveBridge}>
+            {t("muse.saveCheck")}
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            disabled={checking}
+            onClick={() => void pingBridge()}
+          >
+            {checking ? "…" : t("muse.recheck")}
+          </button>
+        </div>
+      </section>
 
       <div className="muse-quick">
-        {MUSE_QUICK.map((q) => (
+        {chips.map((q) => (
           <button
             key={q.label}
             type="button"
             className="chip muse-chip"
-            disabled={busy}
+            disabled={busy || !ready}
             onClick={() => void send(q.prompt)}
           >
             {q.label}
@@ -267,27 +331,24 @@ export function Muse() {
       <div className="muse-chat card">
         {museMessages.length === 0 && (
           <p className="muse-empty">
-            Say hi, or tap a chip above. Muse can see your board labels, open
-            goals, favorite affirmations, journal snippets, and Human Design —
-            only on this device.
+            {ready ? t("muse.emptyReady") : t("muse.emptyOff")}
           </p>
         )}
         {museMessages.map((m) => (
           <div key={m.id} className={`muse-bubble ${m.role}`}>
             <span className="muse-role">
-              {m.role === "user" ? "You" : "Muse"}
+              {m.role === "user" ? t("muse.you") : t("nav.muse")}
             </span>
             <p>{m.content}</p>
-            {m.role === "assistant" && m.content.includes("I ") && (
+            {m.role === "assistant" && (
               <button
                 type="button"
                 className="btn ghost tiny-btn"
                 onClick={() => {
-                  // grab first line that looks like an affirmation
                   const line =
                     m.content
                       .split("\n")
-                      .map((l) => l.replace(/^[\d.*\-]+\s*/, "").trim())
+                      .map((l) => l.replace(/^[\d.*\-•]+\s*/, "").trim())
                       .find((l) => l.length > 12 && l.length < 160) || "";
                   if (line) {
                     addAffirmation(line.replace(/^["“]|["”]$/g, ""));
@@ -295,15 +356,15 @@ export function Muse() {
                   }
                 }}
               >
-                Save a line to affirmations
+                {t("muse.saveLine")}
               </button>
             )}
           </div>
         ))}
         {busy && (
           <div className="muse-bubble assistant">
-            <span className="muse-role">Muse</span>
-            <p className="muted">Listening…</p>
+            <span className="muse-role">{t("nav.muse")}</span>
+            <p className="muted">{t("muse.listening")}</p>
           </div>
         )}
         <div ref={bottomRef} />
@@ -319,7 +380,10 @@ export function Muse() {
         <textarea
           rows={2}
           value={input}
-          placeholder="Ask Muse anything soft or strategic…"
+          placeholder={
+            ready ? t("muse.placeholderReady") : t("muse.placeholderOff")
+          }
+          disabled={!ready}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -331,10 +395,10 @@ export function Muse() {
         <button
           type="button"
           className="btn primary"
-          disabled={busy || !input.trim()}
+          disabled={busy || !input.trim() || !ready}
           onClick={() => void send(input)}
         >
-          Send
+          {t("muse.send")}
         </button>
       </div>
 
@@ -345,7 +409,7 @@ export function Muse() {
           style={{ marginTop: "0.5rem" }}
           onClick={() => clearMuseMessages()}
         >
-          Clear conversation
+          {t("muse.clear")}
         </button>
       )}
     </div>

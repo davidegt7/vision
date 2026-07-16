@@ -1,17 +1,33 @@
 :root {
   color-scheme: dark;
-  --bg: #0e0a14;
-  --bg-elev: #16101f;
-  --panel: #1c1428;
-  --panel-2: #241a32;
-  --border: rgba(255, 255, 255, 0.08);
-  --text: #f4eef8;
-  --muted: #9a8eab;
-  --accent: #c4a0ff;
-  --accent-2: #ffb3c7;
-  --gold: #e8c99a;
-  --ok: #8fd4a8;
-  --danger: #ff8a9a;
+  --bg: #12101a;
+  --bg-elev: #1a1724;
+  --panel: #201c2a;
+  --panel-2: #282430;
+  --border: rgba(220, 210, 230, 0.1);
+  --text: #f2eef6;
+  --muted: #9a92a8;
+  --accent: #b8aed0;
+  --accent-2: #d4c8d8;
+  --gold: #d4c8b8;
+  --ok: #9ec4b0;
+  --danger: #d4a0a8;
+  --glow-1: rgba(180, 170, 210, 0.12);
+  --glow-2: rgba(200, 190, 210, 0.08);
+  --tint-soft: rgba(184, 174, 208, 0.1);
+  --tint-med: rgba(184, 174, 208, 0.18);
+  --tint-strong: rgba(184, 174, 208, 0.32);
+  --edge: #b8aed0;
+  --label: #c8bfd8;
+  --line: #ebe6f2;
+  --nav-bg: rgba(14, 12, 18, 0.94);
+  --btn-primary-fg: #12101a;
+  --card-board: linear-gradient(145deg, #221e2c 0%, #2a2434 55%, #242030 100%);
+  --card-stars: linear-gradient(145deg, #1a1c28 0%, #222632 55%, #1e2230 100%);
+  --card-hd: linear-gradient(145deg, #1e1a2a 0%, #262232 55%, #221e2c 100%);
+  --card-affirm: linear-gradient(145deg, #221e26 0%, #2a242c 55%, #242028 100%);
+  --card-muse: linear-gradient(155deg, #241e26 0%, #2c242c 55%, #261e28 100%);
+  --card-evening: linear-gradient(160deg, #16141e 0%, #1e1c26 55%, #1a1822 100%);
   --radius: 16px;
   --font: "DM Sans", system-ui, sans-serif;
   --display: "Cormorant Garamond", Georgia, serif;
@@ -20,6 +36,7 @@
   line-height: 1.45;
   background: var(--bg);
   color: var(--text);
+  transition: background 0.25s ease, color 0.2s ease;
 }
 
 * {
@@ -51,8 +68,8 @@ body,
 
 body {
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(196, 160, 255, 0.14), transparent),
-    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(255, 179, 199, 0.08), transparent),
+    radial-gradient(ellipse 80% 50% at 50% -10%, var(--glow-1), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, var(--glow-2), transparent),
     var(--bg);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -60,6 +77,7 @@ body {
   /* Safe areas for notched iPhones */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) 0
     env(safe-area-inset-left);
+  transition: background 0.25s ease;
 }
 
 button,

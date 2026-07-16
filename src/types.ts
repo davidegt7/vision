@@ -5,7 +5,8 @@ export type TabId =
   | "affirm"
   | "journal"
   | "stars"
-  | "muse";
+  | "muse"
+  | "settings";
 
 /**
  * AI companion provider.
@@ -162,6 +163,40 @@ export interface HumanDesignProfile {
   source: "computed" | "manual";
 }
 
+export type AppLanguage =
+  | "en"
+  | "es"
+  | "fr"
+  | "pt"
+  | "de"
+  | "it"
+  | "zh"
+  | "ja";
+
+/** App chrome: light/dark surface */
+export type AppMode = "day" | "night";
+
+/** Accent / palette family (pastel + neutral) */
+export type AccentId =
+  | "mist"
+  | "blush"
+  | "sage"
+  | "sand"
+  | "sky"
+  | "clay"
+  // legacy (normalized on load)
+  | "violet"
+  | "rose"
+  | "forest"
+  | "gold"
+  | "ocean"
+  | "coral";
+
+export interface AppearanceSettings {
+  mode: AppMode;
+  accent: AccentId;
+}
+
 export interface UserProfile {
   name: string;
   birthDate: string; // YYYY-MM-DD
@@ -169,12 +204,18 @@ export interface UserProfile {
   birthTime?: string;
   /** Minutes east of UTC at birth (e.g. -300 for US Eastern standard) */
   birthTzOffsetMinutes?: number;
-  /** City / place label for display only */
+  /** City / place label (e.g. "New York, USA") */
   birthPlace?: string;
+  /** IANA time zone from city pick, e.g. America/New_York */
+  birthTimeZone?: string;
   /** Override auto sign if set */
   sign?: ZodiacSign;
   notifications: boolean;
   notifHour: number; // 0-23 local
   /** Full Human Design chart when set */
   humanDesign?: HumanDesignProfile | null;
+  /** UI + Muse reply language */
+  language?: AppLanguage;
+  /** Day/night + accent colors */
+  appearance?: AppearanceSettings;
 }

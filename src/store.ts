@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   Affirmation,
+  AppLanguage,
+  AppearanceSettings,
   BoardItem,
   BoardThemeId,
   Goal,
@@ -15,8 +17,10 @@ import type {
 } from "./types";
 import { STARTER_AFFIRMATIONS } from "./lib/affirmations";
 import { signFromBirthDate } from "./lib/astrology";
-import { DEFAULT_MUSE } from "./lib/muse";
+import { DEFAULT_MUSE, normalizeMuseSettings } from "./lib/muse";
 import { promptForDate, todayKey } from "./lib/prompts";
+import { isLangId } from "./lib/i18n";
+import { DEFAULT_APPEARANCE, normalizeAccent } from "./lib/appearance";
 
 /** Works on phone LAN HTTP (non-secure context) where crypto.randomUUID is missing. */
 function id(prefix: string) {
@@ -91,6 +95,7 @@ interface VisionState {
 
   // Profile
   setProfile: (patch: Partial<UserProfile>) => void;
+  setAppearance: (patch: Partial<AppearanceSettings>) => void;
   resolvedSign: () => ZodiacSign | null;
 }
 
@@ -116,6 +121,8 @@ export const useVision = create<VisionState>()(
         birthDate: "",
         notifications: false,
         notifHour: 9,
+        language: "en",
+        appearance: { ...DEFAULT_APPEARANCE },
       },
       sleepMode: false,
       museSettings: { ...DEFAULT_MUSE },
@@ -406,6 +413,24 @@ export const useVision = create<VisionState>()(
       setProfile: (patch) =>
         set((s) => ({ profile: { ...s.profile, ...patch } })),
 
+      setAppearance: (patch) =>
+        set((s) => {
+          const next = {
+            ...DEFAULT_APPEARANCE,
+            ...s.profile.appearance,
+            ...patch,
+          };
+          return {
+            profile: {
+              ...s.profile,
+              appearance: {
+                mode: next.mode === "day" ? "day" : "night",
+                accent: normalizeAccent(next.accent),
+              },
+            },
+          };
+        }),
+
       resolvedSign: () => {
         const { profile } = get();
         if (profile.sign) return profile.sign;
@@ -414,7 +439,7 @@ export const useVision = create<VisionState>()(
     }),
     {
       name: "vision-app-v1",
-      version: 3,
+      version: 4,
       partialize: (s) => ({
         boards: s.boards,
         activeBoardId: s.activeBoardId,
@@ -445,6 +470,11 @@ export const useVision = create<VisionState>()(
             p.activeBoardId && boards.some((b) => b.id === p.activeBoardId)
               ? p.activeBoardId
               : boards[0]!.id;
+          const rawMuse = {
+            ...DEFAULT_MUSE,
+            ...current.museSettings,
+            ...((p as { museSettings?: MuseSettings }).museSettings || {}),
+          };
           return {
             ...current,
             ...p,
@@ -455,11 +485,31 @@ export const useVision = create<VisionState>()(
               ? p.affirmations
               : current.affirmations,
             journal: Array.isArray(p.journal) ? p.journal : current.journal,
-            profile: { ...current.profile, ...(p.profile || {}) },
-            museSettings: {
-              ...current.museSettings,
-              ...((p as { museSettings?: MuseSettings }).museSettings || {}),
+            profile: {
+              ...current.profile,
+              ...(p.profile || {}),
+              language: ((): AppLanguage => {
+                const raw =
+                  (p.profile as { language?: string } | undefined)?.language ||
+                  current.profile.language ||
+                  "en";
+                return isLangId(raw) ? raw : "en";
+              })(),
+              appearance: (() => {
+                const merged = {
+                  ...DEFAULT_APPEARANCE,
+                  ...current.profile.appearance,
+                  ...((p.profile as { appearance?: AppearanceSettings } | undefined)
+                    ?.appearance || {}),
+                };
+                return {
+                  mode: merged.mode === "day" ? "day" : "night",
+                  accent: normalizeAccent(merged.accent),
+                } as AppearanceSettings;
+              })(),
             },
+            // Codex-only + auto LAN bridge (phone must not keep 127.0.0.1)
+            museSettings: normalizeMuseSettings(rawMuse),
             museMessages: Array.isArray(
               (p as { museMessages?: MuseMessage[] }).museMessages,
             )

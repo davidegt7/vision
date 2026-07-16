@@ -1,88 +1,133 @@
-import type { MuseProviderId, MuseSettings, UserProfile } from "../types";
+import type { MuseSettings, UserProfile } from "../types";
 import type { VisionBoard, Goal, Affirmation, JournalEntry } from "../types";
 import type { HumanDesignProfile } from "../types";
+import { languageNameForPrompt } from "./i18n";
 
-export const MUSE_PROVIDERS: Record<
-  MuseProviderId,
-  {
-    label: string;
-    defaultBase: string;
-    defaultModel: string;
-    hint: string;
-    /** Local CLI via muse-bridge — no API key */
-    localCli?: boolean;
-    defaultProxy?: string;
-  }
-> = {
-  codex: {
-    label: "Codex (ChatGPT plan)",
-    defaultBase: "",
-    defaultModel: "codex",
-    hint: "Uses Codex CLI on your Mac — same login as ChatGPT paid / codex login. Run: npm run muse-bridge",
-    localCli: true,
-    defaultProxy: "http://127.0.0.1:5199/v1/muse",
-  },
-  "claude-cli": {
-    label: "Claude Code (local)",
-    defaultBase: "",
-    defaultModel: "claude",
-    hint: "Uses `claude` CLI on your Mac. Run: npm run muse-bridge",
-    localCli: true,
-    defaultProxy: "http://127.0.0.1:5199/v1/muse",
-  },
-  "grok-cli": {
-    label: "Grok CLI (local)",
-    defaultBase: "",
-    defaultModel: "grok",
-    hint: "Uses Grok CLI OAuth on your Mac. Run: npm run muse-bridge",
-    localCli: true,
-    defaultProxy: "http://127.0.0.1:5199/v1/muse",
-  },
-  openai: {
-    label: "ChatGPT API key",
-    defaultBase: "https://api.openai.com/v1",
-    defaultModel: "gpt-4o-mini",
-    hint: "Paste an API key from platform.openai.com (separate from ChatGPT Plus)",
-  },
-  openrouter: {
-    label: "OpenRouter",
-    defaultBase: "https://openrouter.ai/api/v1",
-    defaultModel: "openai/gpt-4o-mini",
-    hint: "One key, many models — openrouter.ai",
-  },
-  grok: {
-    label: "Grok API key",
-    defaultBase: "https://api.x.ai/v1",
-    defaultModel: "grok-3-mini",
-    hint: "API key from console.x.ai",
-  },
-  custom: {
-    label: "Custom (OpenAI-compatible)",
-    defaultBase: "https://api.openai.com/v1",
-    defaultModel: "gpt-4o-mini",
-    hint: "Any host that speaks the Chat Completions API",
-  },
-};
+/** Default bridge on the Mac (same pattern as Caspian Studio CLI brains). */
+export const DEFAULT_BRIDGE = "http://127.0.0.1:5199/v1/muse";
+export const DEFAULT_BRIDGE_HEALTH = "http://127.0.0.1:5199/v1/health";
+export const BRIDGE_PORT = 5199;
 
 export const DEFAULT_MUSE: MuseSettings = {
   apiKey: "",
   provider: "codex",
   model: "codex",
   baseUrl: "",
-  proxyUrl: "http://127.0.0.1:5199/v1/muse",
+  /** Empty = auto (localhost on laptop, Mac LAN IP on phone). */
+  proxyUrl: "",
 };
 
-export function isLocalCliProvider(id: MuseProviderId): boolean {
-  return Boolean(MUSE_PROVIDERS[id]?.localCli);
+function isLoopbackHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
 }
 
-export function resolveBaseUrl(s: MuseSettings): string {
-  if (s.baseUrl.trim()) return s.baseUrl.trim().replace(/\/$/, "");
-  return MUSE_PROVIDERS[s.provider].defaultBase;
+/** Private LAN / mDNS hosts where the Mac may also run muse-bridge. */
+export function isLanHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  if (isLoopbackHost(h)) return false;
+  // RFC1918 + link-local + common home
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  // Bonjour / local hostname (MacBook.local)
+  if (h.endsWith(".local")) return true;
+  return false;
 }
 
-export function resolveModel(s: MuseSettings): string {
-  return s.model.trim() || MUSE_PROVIDERS[s.provider].defaultModel;
+/**
+ * Pick the right default Muse bridge for this browser.
+ * - Laptop on localhost → 127.0.0.1:5199
+ * - Phone/tablet opening the Mac's Network URL (e.g. 192.168.x.x:5188)
+ *   → same host, port 5199 (phone cannot use 127.0.0.1 — that is the phone itself)
+ * - GitHub Pages / public hosts → still 127.0.0.1 (won't work on phone; use LAN URL)
+ */
+export function suggestedBridgeUrl(): string {
+  if (typeof window === "undefined") return DEFAULT_BRIDGE;
+  const host = window.location.hostname;
+  if (!host || isLoopbackHost(host)) return DEFAULT_BRIDGE;
+  if (isLanHost(host)) {
+    return `http://${host}:${BRIDGE_PORT}/v1/muse`;
+  }
+  return DEFAULT_BRIDGE;
+}
+
+/** True if URL points at loopback (won't work from a phone). */
+export function isLoopbackBridgeUrl(url: string): boolean {
+  try {
+    return isLoopbackHost(new URL(url || DEFAULT_BRIDGE).hostname);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Resolve which bridge URL to use.
+ * On a phone/LAN host, loopback (127.0.0.1) is never valid — always rewrite
+ * to the Mac host that served the page (e.g. 192.168.1.10:5199).
+ */
+export function resolveBridgeUrl(saved?: string): string {
+  const suggested = suggestedBridgeUrl();
+  const raw = (saved || "").trim();
+  if (!raw) return suggested;
+  // Phone / LAN: never call 127.0.0.1 (that is the phone itself)
+  if (!isLoopbackBridgeUrl(suggested) && isLoopbackBridgeUrl(raw)) {
+    return suggested;
+  }
+  // On LAN page, if saved URL is a different loopback form or empty path quirks
+  if (
+    typeof window !== "undefined" &&
+    isLanHost(window.location.hostname) &&
+    isLoopbackBridgeUrl(raw)
+  ) {
+    return suggested;
+  }
+  return raw;
+}
+
+/** Persist-friendly: rewrite loopback → LAN when the page is on the Mac Network URL. */
+export function normalizeMuseSettings(
+  settings: Partial<MuseSettings> | undefined,
+): MuseSettings {
+  const provider =
+    settings?.provider === "openai" ? ("openai" as const) : ("codex" as const);
+  const base = {
+    ...DEFAULT_MUSE,
+    ...settings,
+    provider,
+    // Keep API key when using OpenAI; clear for Codex
+    apiKey: provider === "openai" ? settings?.apiKey || "" : "",
+  };
+  return {
+    ...base,
+    proxyUrl:
+      provider === "codex"
+        ? resolveBridgeUrl(base.proxyUrl)
+        : (base.proxyUrl || "").trim() || resolveBridgeUrl(""),
+  };
+}
+
+/** Opened via public HTTPS (Pages etc.) — browser blocks local HTTP bridge. */
+export function isHttpsPublicPage(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.location.protocol === "https:" &&
+    !isLanHost(window.location.hostname) &&
+    !isLoopbackHost(window.location.hostname)
+  );
+}
+
+export function bridgeHealthUrl(museUrl: string): string {
+  try {
+    const u = new URL(museUrl || DEFAULT_BRIDGE);
+    u.pathname = "/v1/health";
+    u.search = "";
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return DEFAULT_BRIDGE_HEALTH;
+  }
 }
 
 export function buildMuseSystemPrompt(ctx: {
@@ -104,28 +149,54 @@ export function buildMuseSystemPrompt(ctx: {
     .slice(0, 20);
 
   const hd = ctx.hd;
+  const replyLang = languageNameForPrompt(ctx.profile.language);
+  const definedCenters = hd?.centers
+    ? Object.entries(hd.centers)
+        .filter(([, on]) => on)
+        .map(([id]) => id)
+        .join(", ")
+    : "";
+  const hdBlock = hd
+    ? [
+        `Human Design chart (use this — they already calculated it in-app):`,
+        `- Type: ${hd.type}`,
+        `- Strategy: ${hd.strategy}`,
+        `- Authority: ${hd.authority}`,
+        `- Profile: ${hd.profile}`,
+        `- Definition: ${hd.definition || "—"}`,
+        `- Signature: ${hd.signature || "—"}`,
+        `- Not-self: ${hd.notSelf || "—"}`,
+        `- Conscious sun: ${hd.consciousSun || "—"} / Design sun: ${hd.unconsciousSun || "—"}`,
+        `- Defined channels: ${(hd.definedChannels || []).join(", ") || "none listed"}`,
+        `- Defined centers: ${definedCenters || "none listed"}`,
+        hd.approximate ? `- Note: chart is approximate (time/zone uncertainty)` : "",
+        `When they ask about their chart or "HD for daily life", ground advice in THIS chart — do not invent a different type/profile.`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : `Human Design: not set yet in the app. If they ask about HD, gently suggest calculating their chart under Stars → Human Design (city + birth time).`;
+
   return [
-    `You are Muse — a warm, grounded AI companion inside the app "vision".`,
-    `You help with dream boards, manifestation, affirmations, journaling, astrology vibes, and Human Design — gently, never preachy.`,
-    `Tone: soft, clear, encouraging, a little magical but practical. Short paragraphs. No corporate speak. No "as an AI language model".`,
+    `You are Muse — a warm, grounded companion inside the app "vision".`,
+    `You help with dream boards, manifestation, affirmations, journaling, soft astrology vibes, and Human Design.`,
+    `Tone: gentle, clear, encouraging, a little magical but practical. Short paragraphs. No corporate speak. Never say "as an AI".`,
+    `Always reply in ${replyLang} unless the user clearly writes in another language and asks you to match it.`,
     `You're talking to ${ctx.name || "a dreamer"}.`,
     ``,
-    `## Their world in vision (use this context)`,
-    `Board "${ctx.board.name}" themes/labels: ${boardLabels.join("; ") || "(empty board)"}`,
+    `## Their world in vision (use this)`,
+    `Board "${ctx.board.name}" labels: ${boardLabels.join("; ") || "(empty board)"}`,
     `Open goals: ${openGoals.map((g) => g.title).join("; ") || "(none)"}`,
     `Recently manifested: ${doneGoals.map((g) => g.title).join("; ") || "(none)"}`,
     `Favorite affirmations: ${favAff.map((a) => a.text).join(" | ") || "(defaults)"}`,
-    hd
-      ? `Human Design: ${hd.type}, profile ${hd.profile}, authority: ${hd.authority}, strategy: ${hd.strategy}`
-      : `Human Design: not set yet`,
-    `Recent journal snippets: ${
+    hdBlock,
+    `Recent journal: ${
       recentJournal
         .map((j) => `[${j.date}] ${j.prompt} → ${j.body.slice(0, 120)}`)
         .join(" || ") || "(none)"
     }`,
     ``,
     `When they ask for affirmations, offer 3–5 they can copy.`,
-    `When they ask about goals or the board, be specific to their list.`,
+    `Be specific to their list when talking about goals or the board.`,
     `Never claim medical, legal, or financial authority.`,
   ].join("\n");
 }
@@ -135,147 +206,124 @@ export interface MuseChatRequest {
   settings: MuseSettings;
 }
 
-function parseMuseResponse(data: {
-  content?: string;
+export type BridgeStatus = {
+  ok: boolean;
+  codexReady?: boolean;
+  detail?: string;
   error?: string;
-  choices?: Array<{ message?: { content?: string } }>;
-}): string {
-  if (data.error) throw new Error(data.error);
-  const text =
-    data.content || data.choices?.[0]?.message?.content || "";
-  if (!text.trim()) throw new Error("Muse returned an empty reply");
-  return text.trim();
+};
+
+/** Ping the local muse-bridge. */
+export async function checkMuseBridge(
+  museUrl?: string,
+): Promise<BridgeStatus> {
+  const health = bridgeHealthUrl(resolveBridgeUrl(museUrl));
+  try {
+    const res = await fetch(health, { method: "GET" });
+    if (!res.ok) {
+      return { ok: false, error: `Bridge HTTP ${res.status}` };
+    }
+    const data = (await res.json()) as {
+      ok?: boolean;
+      providers?: { codex?: { ready?: boolean; detail?: string } };
+    };
+    const codexReady = Boolean(data.providers?.codex?.ready);
+    return {
+      ok: Boolean(data.ok) && codexReady,
+      codexReady,
+      detail: data.providers?.codex?.detail,
+      error: codexReady
+        ? undefined
+        : data.providers?.codex?.detail || "Codex CLI not ready",
+    };
+  } catch {
+    return {
+      ok: false,
+      error:
+        "Can't reach Muse bridge. On your Mac run: npm run muse-bridge",
+    };
+  }
 }
 
+/**
+ * Muse chat:
+ * - codex → local muse-bridge → Codex CLI (ChatGPT plan)
+ * - openai → bridge (or /api/muse) with user's API key
+ */
 export async function callMuse(req: MuseChatRequest): Promise<string> {
   const { settings, messages } = req;
-  const local = isLocalCliProvider(settings.provider);
+  const provider = settings.provider || "codex";
+  const proxy =
+    provider === "openai" && settings.proxyUrl.trim()
+      ? settings.proxyUrl.trim()
+      : resolveBridgeUrl(settings.proxyUrl);
 
-  if (!local && !settings.apiKey.trim()) {
-    throw new Error(
-      "Add your API key in Muse settings — or pick Codex / Claude / Grok CLI (local).",
-    );
-  }
+  // Prefer local bridge; for openai also try same-origin /api/muse if bridge fails
+  const endpoints =
+    provider === "openai"
+      ? [proxy, "/api/muse"].filter(
+          (u, i, a) => u && a.indexOf(u) === i,
+        )
+      : [proxy];
 
-  // Local CLIs always go through muse-bridge
-  const proxy = local
-    ? settings.proxyUrl.trim() ||
-      MUSE_PROVIDERS[settings.provider].defaultProxy ||
-      "http://127.0.0.1:5199/v1/muse"
-    : settings.proxyUrl.trim() ||
-      (typeof location !== "undefined"
-        ? `${location.origin}/api/muse`
-        : "/api/muse");
-
-  const body = local
-    ? {
-        provider: settings.provider,
-        messages,
-      }
-    : {
-        model: resolveModel(settings),
-        messages,
-        temperature: 0.85,
-        baseUrl: resolveBaseUrl(settings),
+  let lastErr = "Muse request failed";
+  for (const url of endpoints) {
+    try {
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
       };
-
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-  if (!local && settings.apiKey.trim()) {
-    headers.authorization = `Bearer ${settings.apiKey.trim()}`;
-  }
-
-  // 1) Proxy / muse-bridge
-  try {
-    const res = await fetch(proxy, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    const errText = await res.text();
-    let data: {
-      content?: string;
-      error?: string;
-      choices?: Array<{ message?: { content?: string } }>;
-    } = {};
-    try {
-      data = errText ? JSON.parse(errText) : {};
-    } catch {
-      if (!res.ok) {
-        throw new Error(
-          local
-            ? `Muse bridge error (${res.status}). Is it running? npm run muse-bridge`
-            : `Muse error (${res.status}): ${errText.slice(0, 200)}`,
-        );
+      if (provider === "openai" && settings.apiKey.trim()) {
+        headers.authorization = `Bearer ${settings.apiKey.trim()}`;
       }
-    }
-
-    if (!res.ok) {
-      throw new Error(
-        data.error ||
-          (local
-            ? `Bridge HTTP ${res.status}. Run: npm run muse-bridge`
-            : `Muse error (${res.status})`),
-      );
-    }
-    return parseMuseResponse(data);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const isFetchFail =
-      msg.includes("Failed to fetch") ||
-      msg.includes("NetworkError") ||
-      msg.includes("Load failed") ||
-      msg.includes("fetch");
-
-    if (local) {
-      throw new Error(
-        isFetchFail
-          ? "Can't reach Muse bridge. On your Mac run: cd vision && npm run muse-bridge — then set Proxy URL to http://127.0.0.1:5199/v1/muse (or your Mac's LAN IP on phone)."
-          : msg,
-      );
-    }
-
-    if (!isFetchFail) throw e;
-    // fall through to direct cloud call
-  }
-
-  // 2) Direct OpenAI-compatible call (cloud only; needs CORS)
-  const base = resolveBaseUrl(settings);
-  const res = await fetch(`${base}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${settings.apiKey.trim()}`,
-    },
-    body: JSON.stringify({
-      model: resolveModel(settings),
-      messages,
-      temperature: 0.85,
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    let msg = `Provider error (${res.status})`;
-    try {
-      const j = JSON.parse(errText) as { error?: { message?: string } };
-      if (j.error?.message) msg = j.error.message;
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          provider: provider === "openai" ? "openai" : "codex",
+          messages,
+          model: settings.model || undefined,
+          baseUrl: settings.baseUrl || undefined,
+          apiKey:
+            provider === "openai" ? settings.apiKey.trim() || undefined : undefined,
+        }),
+      });
+      const text = await res.text();
+      let data: {
+        content?: string;
+        error?: string;
+        choices?: Array<{ message?: { content?: string } }>;
+      } = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        lastErr = res.ok
+          ? "Muse returned invalid JSON"
+          : `Error (${res.status}): ${text.slice(0, 200)}`;
+        continue;
+      }
+      if (!res.ok) {
+        lastErr =
+          data.error ||
+          (provider === "codex"
+            ? `Bridge HTTP ${res.status}. Is Codex logged in? Try: codex login`
+            : `API HTTP ${res.status}`);
+        continue;
+      }
+      const content =
+        data.content || data.choices?.[0]?.message?.content || "";
+      if (!content.trim()) {
+        lastErr = "Muse returned an empty reply";
+        continue;
+      }
+      return content.trim();
     } catch {
-      if (errText) msg = errText.slice(0, 200);
+      lastErr =
+        provider === "codex"
+          ? "Can't reach Muse bridge. On your Mac: cd vision && npm run muse-bridge"
+          : "Can't reach Muse (bridge or /api/muse). Start muse-bridge or deploy the API proxy.";
     }
-    throw new Error(
-      msg.includes("CORS") || res.type === "opaque"
-        ? "This provider blocks browser calls. Use Codex (local bridge) or deploy on Vercel."
-        : msg,
-    );
   }
-
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return parseMuseResponse(data);
+  throw new Error(lastErr);
 }
 
 export const MUSE_QUICK: Array<{ label: string; prompt: string }> = [

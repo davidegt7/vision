@@ -13,6 +13,8 @@ import type {
   BoardItem,
   BoardThemeId,
 } from "../types";
+import { useI18n } from "../lib/useI18n";
+import { resolveBoardImageUrl } from "../lib/imageUrl";
 
 function itemKind(item: BoardItem): "image" | "text" {
   if (item.kind === "text" || item.kind === "image") return item.kind;
@@ -66,6 +68,7 @@ function isImageFile(file: File): boolean {
 }
 
 export function Board() {
+  const { t } = useI18n();
   const board = useVision((s) => s.activeBoard());
   const boards = useVision((s) => s.boards);
   const activeBoardId = useVision((s) => s.activeBoardId);
@@ -159,20 +162,30 @@ export function Board() {
     }
   };
 
-  const addFromUrl = () => {
+  const addFromUrl = async () => {
     const u = urlDraft.trim();
     if (!u) return;
-    addBoardItems([
-      {
-        kind: "image",
-        src: u,
-        label: "From link",
-        w: 34,
-        h: 24,
-      },
-    ]);
-    setUrlDraft("");
-    setStatus("Saved · link added (auto-saves in this browser)");
+    setStatus("Loading image…");
+    try {
+      const { src, label } = await resolveBoardImageUrl(u);
+      addBoardItems([
+        {
+          kind: "image",
+          src,
+          label: label || "From link",
+          w: 34,
+          h: 24,
+        },
+      ]);
+      setUrlDraft("");
+      setStatus(
+        src.startsWith("data:")
+          ? "Saved · image on board (stored in this browser)"
+          : "Saved · image link added",
+      );
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const openPinterest = () => {
@@ -392,7 +405,7 @@ export function Board() {
     <div className="page board-page">
       <header className="page-head">
         <div>
-          <p className="eyebrow">Dream board · auto-saved</p>
+          <p className="eyebrow">{t("board.eyebrow")}</p>
           <input
             className="title-input"
             value={board.name}
@@ -431,7 +444,7 @@ export function Board() {
               setStatus("New board created · your other boards are still saved");
             }}
           >
-            + New board
+            + {t("board.newBoard")}
           </button>
           <button
             type="button"
@@ -466,7 +479,7 @@ export function Board() {
               setStatus("Board deleted · others kept");
             }}
           >
-            Delete
+            {t("common.delete")}
           </button>
         </div>
       </div>
@@ -478,7 +491,7 @@ export function Board() {
           disabled={uploading}
           onClick={() => fileRef.current?.click()}
         >
-          {uploading ? "Adding…" : "Upload images"}
+          {uploading ? "…" : t("board.upload")}
         </button>
         <input
           ref={fileRef}
@@ -496,13 +509,13 @@ export function Board() {
             setStatus("Text added — tap it to edit font & size");
           }}
         >
-          + Add text
+          + {t("board.addText")}
         </button>
         <button type="button" className="btn" onClick={openPinterest}>
-          Open Pinterest
+          {t("board.pinterest")}
         </button>
         <button type="button" className="btn" onClick={() => void exportWallpaper()}>
-          Save as wallpaper
+          {t("board.export")}
         </button>
       </div>
 
@@ -527,7 +540,7 @@ export function Board() {
         }}
       >
         <p>
-          <strong>Drop many photos here</strong> or use Upload images — select
+          <strong>{t("board.drop")}</strong> —
           several at once (⌘/Ctrl+click).
         </p>
       </div>
@@ -535,16 +548,23 @@ export function Board() {
       <div className="url-row">
         <input
           type="url"
-          placeholder="Paste image URL or Pinterest image address…"
+          placeholder={t("board.urlPh")}
           value={urlDraft}
           onChange={(e) => setUrlDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addFromUrl()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void addFromUrl();
+          }}
         />
-        <button type="button" className="btn" onClick={addFromUrl}>
-          Add link
+        <button type="button" className="btn" onClick={() => void addFromUrl()}>
+          {t("board.addUrl")}
         </button>
       </div>
 
+      <p className="hint">
+        Pinterest: paste a <strong>pin link</strong> or right‑click image →{" "}
+        <strong>Copy image address</strong> (pinimg.com). Pin pages need{" "}
+        <code>npm run muse-bridge</code> running. Upload is always the most reliable.
+      </p>
       <p className="hint">
         Everything auto-saves in this browser. Switch boards with the chips above —
         New board never erases the old one. Drag cards to move · corner to resize.
@@ -574,8 +594,8 @@ export function Board() {
       >
         {board.items.length === 0 && (
           <div className="board-empty">
-            <p>Drop your dreams here</p>
-            <p className="muted">Upload, paste a link, or grab inspo from Pinterest</p>
+            <p>{t("board.emptyTitle")}</p>
+            <p className="muted">{t("board.emptyHint")}</p>
           </div>
         )}
         {[...board.items]
@@ -619,7 +639,19 @@ export function Board() {
                   <div className="board-text">{item.label || "Tap to edit"}</div>
                 ) : (
                   <>
-                    <img src={item.src} alt={item.label || "vision"} draggable={false} />
+                    <img
+                      src={item.src}
+                      alt={item.label || "vision"}
+                      draggable={false}
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      onError={(e) => {
+                        const el = e.currentTarget;
+                        el.style.opacity = "0.35";
+                        el.title =
+                          "Image failed to load — try Copy image address or upload";
+                      }}
+                    />
                     {item.label && <span className="item-label">{item.label}</span>}
                   </>
                 )}
@@ -640,7 +672,7 @@ export function Board() {
                 className="text-edit"
                 rows={2}
                 value={selectedItem.label}
-                placeholder="Write your vision…"
+                placeholder={t("board.writeVision")}
                 onChange={(e) =>
                   updateBoardItem(selectedItem.id, { label: e.target.value })
                 }
@@ -778,7 +810,7 @@ export function Board() {
           ) : (
             <input
               value={selectedItem.label}
-              placeholder="Label this dream…"
+              placeholder={t("board.labelDream")}
               onChange={(e) =>
                 updateBoardItem(selectedItem.id, { label: e.target.value })
               }

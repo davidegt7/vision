@@ -4,8 +4,10 @@ import { SIGNS, dailyHoroscope, signFromBirthDate } from "../lib/astrology";
 import { todayKey } from "../lib/prompts";
 import type { ZodiacSign } from "../types";
 import { HumanDesignPanel } from "./HumanDesign";
+import { useI18n } from "../lib/useI18n";
 
 export function Stars() {
+  const { t } = useI18n();
   const profile = useVision((s) => s.profile);
   const setProfile = useVision((s) => s.setProfile);
   const sign = useVision((s) => s.resolvedSign)();
@@ -39,20 +41,20 @@ export function Stars() {
 
   const enableNotifs = async () => {
     if (!("Notification" in window)) {
-      setNotifMsg("Notifications aren’t supported here — try adding to Home Screen on your phone.");
+      setNotifMsg(t("stars.notifUnsupported"));
       return;
     }
     const perm = await Notification.requestPermission();
     if (perm === "granted") {
       setProfile({ notifications: true });
-      setNotifMsg("Daily stars on — leave vision open or pinned for reminders.");
+      setNotifMsg(t("stars.notifGranted"));
       const s = sign || auto;
       if (s) {
         const h = dailyHoroscope(s, todayKey());
-        new Notification("vision · you’re set", { body: h.body.slice(0, 100) });
+        new Notification("vision", { body: h.body.slice(0, 100) });
       }
     } else {
-      setNotifMsg("Permission denied — you can still read the daily here.");
+      setNotifMsg(t("stars.notifDenied"));
       setProfile({ notifications: false });
     }
   };
@@ -61,26 +63,23 @@ export function Stars() {
     <div className="page">
       <header className="page-head">
         <div>
-          <p className="eyebrow">Astrology</p>
-          <h1>Daily stars</h1>
+          <p className="eyebrow">{t("stars.eyebrow")}</p>
+          <h1>{t("stars.title")}</h1>
         </div>
       </header>
-      <p className="lede tight">
-        Soft guidance, not dogma. Astrology daily + your Human Design chart in one
-        place — optional daily nudge.
-      </p>
+      <p className="lede tight">{t("stars.lede")}</p>
 
       <section className="card form-card">
         <label>
-          Your name
+          {t("stars.name")}
           <input
             value={profile.name}
             onChange={(e) => setProfile({ name: e.target.value })}
-            placeholder="What should we call you?"
+            placeholder={t("stars.namePh")}
           />
         </label>
         <label>
-          Birthday
+          {t("stars.birthday")}
           <input
             type="date"
             value={profile.birthDate}
@@ -88,7 +87,7 @@ export function Stars() {
           />
         </label>
         <label>
-          Sign (optional override)
+          {t("stars.sign")}
           <select
             value={profile.sign || auto || ""}
             onChange={(e) =>
@@ -97,7 +96,7 @@ export function Stars() {
               })
             }
           >
-            <option value="">Auto from birthday</option>
+            <option value="">{t("stars.autoSign")}</option>
             {SIGNS.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.emoji} {s.label} · {s.dates}
@@ -106,7 +105,7 @@ export function Stars() {
           </select>
         </label>
         <label>
-          Reminder hour
+          {t("stars.notifHour")}
           <input
             type="number"
             min={0}
@@ -117,7 +116,7 @@ export function Stars() {
         </label>
         <div className="add-row">
           <button type="button" className="btn primary" onClick={() => void enableNotifs()}>
-            {profile.notifications ? "Notifications on" : "Enable daily notification"}
+            {profile.notifications ? t("stars.notifOn") : t("stars.notifEnable")}
           </button>
           {profile.notifications && (
             <button
@@ -125,7 +124,7 @@ export function Stars() {
               className="btn ghost"
               onClick={() => setProfile({ notifications: false })}
             >
-              Turn off
+              {t("stars.notifOff")}
             </button>
           )}
         </div>

@@ -53,6 +53,8 @@ No computer required after deploy. HTTPS works properly for install.
 
 | Area | What you get |
 |------|----------------|
+| **Today** | One daily screen: HD line, star focus, top goal, affirmation, Muse 10‑min start, evening 3 lines + mark manifested |
+| **Languages** | English, Español, Français, Português, Deutsch, Italiano, 中文, 日本語 (picker on Today + Stars; Muse replies in that language) |
 | **Dream board** | Multi-upload, drag-drop, text with fonts/aspect, Pinterest, wallpaper export |
 | **Saved boards** | Multiple boards, auto-save in the browser |
 | **Manifestation** | Check goals off as they land |
@@ -60,38 +62,41 @@ No computer required after deploy. HTTPS works properly for install.
 | **Daily write** | One gentle prompt per day |
 | **Stars** | Birthday → daily reading + optional notifications |
 | **Human Design** | Calculate or paste your chart (under Stars) |
-| **Muse** | Soft AI companion — use *your* ChatGPT / OpenRouter / Grok key |
+| **Muse** | Soft AI companion via Codex CLI on your Mac |
 
 Data stays in **this browser’s storage** (localStorage). Clearing site data wipes boards.
 
-### Muse (AI) setup
+### Muse (AI) — Codex only (for now)
 
-Muse can use **your ChatGPT paid plan via Codex CLI** (same idea as Caspian Studio) — no separate API key — or cloud API keys.
-
-#### A) Codex / Claude / Grok CLI (recommended if you already use them)
-
-On your Mac:
+Uses **Codex CLI** on your Mac (ChatGPT paid plan via `codex login`) — same idea as Caspian Studio. No OpenAI API key yet.
 
 ```bash
-# once: log into Codex with your ChatGPT account
+# once
 codex login
 
+# leave this running while you chat
 cd vision
 npm run muse-bridge
 # → http://127.0.0.1:5199
 ```
 
-In the app → **Muse → Settings**:
+In the app → **Muse**:
 
-1. Provider: **Codex (ChatGPT plan)** (or Claude / Grok CLI)
-2. Bridge URL: `http://127.0.0.1:5199/v1/muse`  
-   (on phone: `http://YOUR_MAC_IP:5199/v1/muse`, same Wi‑Fi)
-3. Save → chat
+1. Bridge URL defaults to `http://127.0.0.1:5199/v1/muse`
+2. Wait for **Codex ready**
+3. Chat or tap a quick chip
 
-#### B) API keys (OpenAI / OpenRouter / Grok / custom)
+**Phone (same Wi‑Fi as Mac):**
 
-1. Muse → Settings → pick provider → paste key  
-2. Best with a **Vercel** deploy (`/api/muse` proxy). GitHub Pages alone can’t call OpenAI from the browser without a proxy.
+1. Open vision via the Mac **Network** URL from `npm run dev`  
+   (e.g. `http://192.168.1.10:5188`) — **not** GitHub Pages HTTPS.
+2. Muse auto-sets the bridge to `http://YOUR_MAC_IP:5199/v1/muse`.  
+   If it still says Bridge off, tap **Use this** / **Save & check**.
+3. Mac must keep `npm run muse-bridge` running.
+
+GitHub Pages can’t reach the local bridge (browser blocks HTTPS → HTTP).
+
+API keys (OpenAI etc.) can come later when you’re ready to pay for platform access.
 
 ## Stack
 

@@ -2,20 +2,19 @@
 /**
  * Muse local bridge — same idea as Caspian Studio's CLI brains.
  *
- * Runs on your Mac and lets the vision web app call:
- *   - Codex CLI  (ChatGPT / OpenAI login via `codex login`)
- *   - Claude Code CLI
- *   - Grok CLI
+ * Primary (for now): Codex CLI via `codex login` (ChatGPT paid plan).
+ * Still accepts claude / grok-cli if you ever flip the app back to multi-provider.
  *
  * Usage:
- *   node server/muse-bridge.mjs
+ *   npm run muse-bridge
  *   # → http://127.0.0.1:5199
  *
- * In vision Muse settings:
- *   Provider: Codex (local) / Claude (local) / Grok (local)
- *   Proxy URL: http://127.0.0.1:5199/v1/muse   (phone: http://YOUR_LAN_IP:5199/v1/muse)
+ * In vision → Muse:
+ *   Bridge URL: http://127.0.0.1:5199/v1/muse
+ *   Phone (same Wi‑Fi): http://YOUR_LAN_IP:5199/v1/muse
  *
  * No API key required — uses the CLI login you already have.
+ * If Codex errors about model / "newer version", run: codex update
  */
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
@@ -116,24 +115,62 @@ function flattenMessages(messages) {
   return { sys, convo, full: sys ? `${sys}\n\n---\n\n${convo}` : convo };
 }
 
+function friendlyCodexError(raw) {
+  const msg = String(raw || "");
+  // Usage / rate limit (ChatGPT plan)
+  if (/usage limit|rate limit|quota/i.test(msg)) {
+    const when =
+      msg.match(/try again at\s+([0-9]{1,2}:[0-9]{2}\s*[AP]M)/i)?.[1]?.trim() ||
+      msg.match(/try again at\s+([^.!\n]+)/i)?.[1]?.trim();
+    return when
+      ? `Codex usage limit hit — try Muse again after ${when}. Or check https://chatgpt.com/codex/settings/usage`
+      : `Codex usage limit hit. Check https://chatgpt.com/codex/settings/usage or try again later.`;
+  }
+  if (/not logged in|login|auth/i.test(msg) && /codex/i.test(msg)) {
+    return "Codex isn’t logged in. On your Mac run: codex login";
+  }
+  if (
+    msg.includes("newer version") ||
+    msg.includes("requires a newer") ||
+    msg.includes("model metadata")
+  ) {
+    return `${msg}\n\nFix: run \`codex update\` (or set MUSE_CODEX_MODEL).`;
+  }
+  // Trim noisy CLI header if present
+  const errLine = msg
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => /^ERROR:/i.test(l));
+  if (errLine) return errLine.replace(/^ERROR:\s*/i, "");
+  return msg.slice(-800);
+}
+
 async function callCodex(prompt) {
   // Prefer sandbox read-only — Muse is chat, not a code agent with full tools.
   // --ephemeral avoids cluttering session history when possible.
-  const args = ["exec", "--sandbox", "read-only", "--ephemeral", "-"];
+  // Optional: MUSE_CODEX_MODEL overrides ~/.codex/config.toml model.
+  const model = (process.env.MUSE_CODEX_MODEL || "").trim();
+  const base = ["exec", "--sandbox", "read-only", "--ephemeral"];
+  if (model) base.push("-m", model);
+  base.push("-");
   try {
-    return await runCli("codex", args, prompt, TIMEOUT_MS);
+    return await runCli("codex", base, prompt, TIMEOUT_MS);
   } catch (e) {
     // Older CLIs may not support --ephemeral
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("ephemeral") || msg.includes("unexpected")) {
-      return runCli(
-        "codex",
-        ["exec", "--sandbox", "read-only", "-"],
-        prompt,
-        TIMEOUT_MS,
-      );
+      try {
+        const fallback = ["exec", "--sandbox", "read-only"];
+        if (model) fallback.push("-m", model);
+        fallback.push("-");
+        return await runCli("codex", fallback, prompt, TIMEOUT_MS);
+      } catch (e2) {
+        throw new Error(
+          friendlyCodexError(e2 instanceof Error ? e2.message : String(e2)),
+        );
+      }
     }
-    throw e;
+    throw new Error(friendlyCodexError(msg));
   }
 }
 
@@ -171,6 +208,53 @@ async function callGrok(systemPrompt, userPrompt) {
   }
 }
 
+/** OpenAI Chat Completions — uses key from request body or OPENAI_API_KEY env. */
+async function callOpenAI(messages, { apiKey, model, baseUrl }) {
+  const key =
+    (apiKey || "").trim() ||
+    (process.env.OPENAI_API_KEY || process.env.MUSE_API_KEY || "").trim();
+  if (!key) {
+    throw new Error(
+      "Missing OpenAI API key. Add it in vision Settings, or set OPENAI_API_KEY.",
+    );
+  }
+  const base = (baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
+  const res = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model: model || "gpt-4o-mini",
+      messages: (messages || []).map((m) => ({
+        role: m.role || "user",
+        content: String(m.content || ""),
+      })),
+      temperature: 0.85,
+    }),
+  });
+  const text = await res.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(
+      res.ok
+        ? "OpenAI returned invalid JSON"
+        : `OpenAI HTTP ${res.status}: ${text.slice(0, 200)}`,
+    );
+  }
+  if (!res.ok) {
+    const err =
+      data?.error?.message || data?.error || text.slice(0, 300) || res.status;
+    throw new Error(String(err));
+  }
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content?.trim()) throw new Error("OpenAI returned an empty reply");
+  return String(content).trim();
+}
+
 function json(res, status, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(status, {
@@ -181,6 +265,139 @@ function json(res, status, obj) {
     "content-length": Buffer.byteLength(body),
   });
   res.end(body);
+}
+
+const MAX_IMAGE_BYTES = 4_500_000;
+
+function upgradePinimg(u) {
+  try {
+    const url = new URL(u);
+    if (!/pinimg\.com/i.test(url.hostname)) return u;
+    url.pathname = url.pathname.replace(/\/(\d+x|originals)\//, "/originals/");
+    return url.toString();
+  } catch {
+    return u;
+  }
+}
+
+function extractOgImage(html) {
+  const patterns = [
+    /property=["']og:image["']\s+content=["']([^"']+)["']/i,
+    /content=["']([^"']+)["']\s+property=["']og:image["']/i,
+    /property=["']og:image:secure_url["']\s+content=["']([^"']+)["']/i,
+    /name=["']twitter:image["']\s+content=["']([^"']+)["']/i,
+    /content=["']([^"']+)["']\s+name=["']twitter:image["']/i,
+    /"image_url"\s*:\s*"([^"]+pinimg[^"]+)"/i,
+    /"url"\s*:\s*"(https:\\\/\\\/i\.pinimg\.com[^"]+)"/i,
+  ];
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m?.[1]) {
+      return m[1]
+        .replace(/\\u002F/g, "/")
+        .replace(/\\\//g, "/")
+        .replace(/&amp;/g, "&");
+    }
+  }
+  return null;
+}
+
+function extractTitle(html) {
+  const m =
+    html.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
+    html.match(/content=["']([^"']+)["']\s+property=["']og:title["']/i) ||
+    html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  return m?.[1]?.trim().slice(0, 80) || "";
+}
+
+async function fetchBuffer(imageUrl) {
+  const res = await fetch(imageUrl, {
+    headers: {
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      referer: "https://www.pinterest.com/",
+    },
+    redirect: "follow",
+  });
+  if (!res.ok) {
+    throw new Error(`Image fetch HTTP ${res.status}`);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > MAX_IMAGE_BYTES) {
+    throw new Error("Image too large (max ~4.5MB for board storage)");
+  }
+  const ct = (res.headers.get("content-type") || "image/jpeg").split(";")[0];
+  if (!ct.startsWith("image/") && !/\.(jpe?g|png|gif|webp)/i.test(imageUrl)) {
+    // might still be image without header
+  }
+  const mime = ct.startsWith("image/") ? ct : "image/jpeg";
+  return { dataUrl: `data:${mime};base64,${buf.toString("base64")}`, bytes: buf.length };
+}
+
+async function unfurlImage(targetUrl) {
+  let imageUrl = targetUrl;
+  let title = "";
+
+  const isPinPage = /pinterest\.[a-z.]+\/pin\//i.test(targetUrl);
+  const isPinimg = /pinimg\.com/i.test(targetUrl);
+
+  if (isPinPage) {
+    const pageRes = await fetch(targetUrl, {
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        accept: "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+    });
+    if (!pageRes.ok) {
+      throw new Error(
+        `Couldn’t open Pinterest pin (HTTP ${pageRes.status}). Try Copy image address instead.`,
+      );
+    }
+    const html = await pageRes.text();
+    title = extractTitle(html);
+    const og = extractOgImage(html);
+    if (!og) {
+      throw new Error(
+        "Couldn’t find image on that Pinterest pin. Right‑click the image → Copy image address, paste that pinimg.com link.",
+      );
+    }
+    imageUrl = upgradePinimg(og);
+  } else if (isPinimg) {
+    imageUrl = upgradePinimg(targetUrl);
+  } else if (!/\.(jpe?g|png|gif|webp|avif)(\?|$)/i.test(targetUrl)) {
+    // Generic page — try og:image
+    try {
+      const pageRes = await fetch(targetUrl, {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (compatible; vision-board/1.0)",
+          accept: "text/html",
+        },
+        redirect: "follow",
+      });
+      if (pageRes.ok) {
+        const html = await pageRes.text();
+        const ct = pageRes.headers.get("content-type") || "";
+        if (ct.includes("text/html")) {
+          title = extractTitle(html);
+          const og = extractOgImage(html);
+          if (og) imageUrl = og;
+        }
+      }
+    } catch {
+      /* use original */
+    }
+  }
+
+  const { dataUrl } = await fetchBuffer(imageUrl);
+  return {
+    dataUrl,
+    imageUrl,
+    title: title || undefined,
+  };
 }
 
 async function statusPayload() {
@@ -243,6 +460,36 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  /**
+   * Resolve a page/image URL to a board-ready data URL.
+   * Handles Pinterest pin pages (og:image) + pinimg hotlink issues.
+   */
+  if (req.method === "POST" && url.pathname === "/v1/unfurl") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let parsed;
+    try {
+      parsed = JSON.parse(body || "{}");
+    } catch {
+      json(res, 400, { error: "Invalid JSON" });
+      return;
+    }
+    const target = String(parsed.url || "").trim();
+    if (!target || !/^https?:\/\//i.test(target)) {
+      json(res, 400, { error: "url must be http(s)" });
+      return;
+    }
+    try {
+      const result = await unfurlImage(target);
+      json(res, 200, result);
+    } catch (e) {
+      json(res, 500, {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/v1/muse") {
     let body = "";
     for await (const chunk of req) body += chunk;
@@ -261,13 +508,23 @@ const server = createServer(async (req, res) => {
       let content = "";
       if (provider === "codex" || provider === "chatgpt" || provider === "openai-cli") {
         content = await callCodex(full);
+      } else if (
+        provider === "openai" ||
+        provider === "openrouter" ||
+        provider === "api"
+      ) {
+        content = await callOpenAI(parsed.messages, {
+          apiKey: parsed.apiKey,
+          model: parsed.model,
+          baseUrl: parsed.baseUrl,
+        });
       } else if (provider === "claude" || provider === "claude-cli") {
         content = await callClaude(sys, convo || full);
       } else if (provider === "grok" || provider === "grok-cli") {
         content = await callGrok(sys, convo || full);
       } else {
         json(res, 400, {
-          error: `Unknown local provider "${provider}". Use codex | claude | grok-cli`,
+          error: `Unknown provider "${provider}". Use codex | openai | claude | grok-cli`,
         });
         return;
       }
